@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use gpui::{prelude::*, Pixels, Rgba};
+use gpui::{prelude::*, Div, Pixels, Rgba};
 
 pub const FONT: &str = "Fira Code";
 
@@ -43,32 +43,24 @@ pub const RED2: Rgba = rgba(0xf21d23);
 
 pub const WHITE: Rgba = rgba(0xffffff);
 
-pub fn raised(child: impl IntoElement) -> impl IntoElement {
+pub fn raised(child: impl IntoElement) -> Div {
     gpui::div()
-        .border_t_2()
-        .border_l_2()
-        .border_color(GRAY5)
-        .child(
-            gpui::div()
-                .border_b_2()
-                .border_r_2()
-                .border_color(GRAY1)
-                .child(child),
-        )
+        .relative()
+        .child(child)
+        .child(bevel_top(GRAY5))
+        .child(bevel_left(GRAY5))
+        .child(bevel_bottom(GRAY1))
+        .child(bevel_right(GRAY1))
 }
 
-pub fn sunken(child: impl IntoElement) -> impl IntoElement {
+pub fn sunken(child: impl IntoElement) -> Div {
     gpui::div()
-        .border_t_2()
-        .border_l_2()
-        .border_color(GRAY1)
-        .child(
-            gpui::div()
-                .border_b_2()
-                .border_r_2()
-                .border_color(GRAY5)
-                .child(child),
-        )
+        .relative()
+        .child(child)
+        .child(bevel_top(GRAY1))
+        .child(bevel_left(GRAY1))
+        .child(bevel_bottom(GRAY5))
+        .child(bevel_right(GRAY5))
 }
 
 const fn rgba(hex: u32) -> Rgba {
@@ -77,4 +69,44 @@ const fn rgba(hex: u32) -> Rgba {
     let b = (hex & 0xff) as f32 / 255.0;
 
     Rgba { r, g, b, a: 1.0 }
+}
+
+fn bevel_top(color: Rgba) -> impl IntoElement {
+    gpui::div()
+        .absolute()
+        .top_0()
+        .left_0()
+        .right_0()
+        .h(S1)
+        .bg(color)
+}
+
+fn bevel_left(color: Rgba) -> impl IntoElement {
+    gpui::div()
+        .absolute()
+        .top_0()
+        .bottom_0()
+        .left_0()
+        .w(S1)
+        .bg(color)
+}
+
+fn bevel_bottom(color: Rgba) -> impl IntoElement {
+    gpui::div()
+        .absolute()
+        .bottom_0()
+        .left_0()
+        .right_0()
+        .h(S1)
+        .bg(color)
+}
+
+fn bevel_right(color: Rgba) -> impl IntoElement {
+    gpui::div()
+        .absolute()
+        .top_0()
+        .bottom_0()
+        .right_0()
+        .w(S1)
+        .bg(color)
 }

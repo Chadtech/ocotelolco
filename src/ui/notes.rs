@@ -7,14 +7,24 @@ use crate::ui::style as s;
 
 pub fn run() {
     Application::new().run(|cx: &mut App| {
-        cx.open_window(WindowOptions::default(), |window, cx| {
-            window.set_window_title("Ocotelolco Notes");
-            cx.new(|cx| NotesApp {
-                focus_handle: cx.focus_handle(),
-                note: String::new(),
+        let window_handle = cx
+            .open_window(WindowOptions::default(), |window, cx| {
+                window.set_window_title("Ocotelolco Notes");
+                let focus_handle = cx.focus_handle();
+
+                cx.new(|_| NotesApp {
+                    focus_handle,
+                    note: String::new(),
+                })
             })
-        })
-        .expect("failed to open notes window");
+            .expect("failed to open notes window");
+
+        window_handle
+            .update(cx, |notes, window, cx| {
+                window.focus(&notes.focus_handle);
+                cx.activate(true);
+            })
+            .expect("failed to focus notes window");
     });
 }
 
@@ -74,14 +84,17 @@ impl Render for NotesApp {
             .flex()
             .size_full()
             .font_family(s::FONT)
-            .bg(s::GREEN1)
+            .bg(s::GREEN2)
             .text_color(s::GRAY6)
-            .child(s::raised(
+            .p(s::S5)
+            .child(
                 gpui::div()
+                    .flex_1()
                     .flex()
                     .flex_col()
                     .size_full()
                     .bg(s::GRAY2)
+                    .w_full()
                     .child(
                         gpui::div()
                             .h(s::S5)
@@ -92,20 +105,23 @@ impl Render for NotesApp {
                             .text_color(s::GREEN1)
                             .child("notes"),
                     )
-                    .child(s::sunken(
-                        gpui::div()
-                            .flex()
-                            .flex_col()
-                            .size_full()
-                            .p(s::S4)
-                            .bg(s::GREEN1)
-                            .track_focus(&self.focus_handle)
-                            .key_context("NoteEditor")
-                            .on_mouse_down(MouseButton::Left, cx.listener(Self::focus_editor))
-                            .on_key_down(cx.listener(Self::handle_key_down))
-                            .children(render_note_lines(lines, is_focused)),
-                    )),
-            ))
+                    .child(
+                        s::sunken(
+                            gpui::div()
+                                .flex()
+                                .flex_col()
+                                .size_full()
+                                .p(s::S4)
+                                .bg(s::GREEN1)
+                                .track_focus(&self.focus_handle)
+                                .key_context("NoteEditor")
+                                .on_mouse_down(MouseButton::Left, cx.listener(Self::focus_editor))
+                                .on_key_down(cx.listener(Self::handle_key_down))
+                                .children(render_note_lines(lines, is_focused)),
+                        )
+                        .size_full(),
+                    ),
+            )
     }
 }
 
