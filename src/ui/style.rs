@@ -1,13 +1,17 @@
 #![allow(dead_code)]
 
-use gpui::{Pixels, Rgba};
+use gpui::{prelude::*, Pixels, Rgba};
+
+pub const FONT: &str = "Fira Code";
 
 pub const S1: Pixels = gpui::px(2.0);
 pub const S2: Pixels = gpui::px(4.0);
 pub const S3: Pixels = gpui::px(8.0);
 pub const S4: Pixels = gpui::px(16.0);
 pub const S5: Pixels = gpui::px(32.0);
-pub const S6: Pixels = gpui::px(260.0);
+pub const S6: Pixels = gpui::px(64.0);
+pub const S7: Pixels = gpui::px(128.0);
+pub const S8: Pixels = gpui::px(256.0);
 
 pub const GREEN1: Rgba = rgba(0x030907);
 pub const GREEN2: Rgba = rgba(0x071d10);
@@ -38,6 +42,34 @@ pub const RED1: Rgba = rgba(0x651a20);
 pub const RED2: Rgba = rgba(0xf21d23);
 
 pub const WHITE: Rgba = rgba(0xffffff);
+
+pub fn raised(child: impl IntoElement) -> impl IntoElement {
+    gpui::div()
+        .border_t_2()
+        .border_l_2()
+        .border_color(GRAY5)
+        .child(
+            gpui::div()
+                .border_b_2()
+                .border_r_2()
+                .border_color(GRAY1)
+                .child(child),
+        )
+}
+
+pub fn sunken(child: impl IntoElement) -> impl IntoElement {
+    gpui::div()
+        .border_t_2()
+        .border_l_2()
+        .border_color(GRAY1)
+        .child(
+            gpui::div()
+                .border_b_2()
+                .border_r_2()
+                .border_color(GRAY5)
+                .child(child),
+        )
+}
 
 const fn rgba(hex: u32) -> Rgba {
     let r = ((hex >> 16) & 0xff) as f32 / 255.0;
