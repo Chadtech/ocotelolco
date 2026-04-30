@@ -12,9 +12,9 @@ pub fn run() {
                 window.set_window_title("Ocotelolco Notes");
                 let focus_handle = cx.focus_handle();
 
-                cx.new(|_| NotesApp {
+                cx.new(|_| Model {
                     focus_handle,
-                    note: String::new(),
+                    notes: Vec::new(),
                 })
             })
             .expect("failed to open notes window");
@@ -28,57 +28,61 @@ pub fn run() {
     });
 }
 
-struct NotesApp {
-    focus_handle: FocusHandle,
-    note: String,
+struct Note {
+    content: String,
 }
 
-impl NotesApp {
+struct Model {
+    focus_handle: FocusHandle,
+    notes: Vec<Note>,
+}
+
+impl Model {
     fn focus_editor(&mut self, _: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus_handle);
         cx.notify();
     }
 
     fn handle_key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
-        if event.keystroke.modifiers.platform || event.keystroke.modifiers.control {
-            return;
-        }
-
-        match event.keystroke.key.as_str() {
-            "backspace" => {
-                self.note.pop();
-                cx.stop_propagation();
-                cx.notify();
-            }
-            "enter" => {
-                self.note.push('\n');
-                cx.stop_propagation();
-                cx.notify();
-            }
-            _ => {
-                if let Some(key_char) = event.keystroke.key_char.as_ref() {
-                    self.note.push_str(key_char);
-                    cx.stop_propagation();
-                    cx.notify();
-                }
-            }
-        }
+        // if event.keystroke.modifiers.platform || event.keystroke.modifiers.control {
+        //     return;
+        // }
+        //
+        // match event.keystroke.key.as_str() {
+        //     "backspace" => {
+        //         self.note.pop();
+        //         cx.stop_propagation();
+        //         cx.notify();
+        //     }
+        //     "enter" => {
+        //         self.note.push('\n');
+        //         cx.stop_propagation();
+        //         cx.notify();
+        //     }
+        //     _ => {
+        //         if let Some(key_char) = event.keystroke.key_char.as_ref() {
+        //             self.note.push_str(key_char);
+        //             cx.stop_propagation();
+        //             cx.notify();
+        //         }
+        //     }
+        // }
     }
 }
 
-impl Focusable for NotesApp {
+impl Focusable for Model {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }
 
-impl Render for NotesApp {
+impl Render for Model {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_focused = self.focus_handle.is_focused(window);
-        let mut lines = self.note.split('\n').collect::<Vec<_>>();
-        if lines.is_empty() {
-            lines.push("");
-        }
+        // let mut lines = self.note.split('\n').collect::<Vec<_>>();
+        // if lines.is_empty() {
+        //     lines.push("");
+        // }
 
         gpui::div()
             .flex()
