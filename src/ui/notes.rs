@@ -1,6 +1,6 @@
 use gpui::{
-    prelude::*, App, Application, Context, FocusHandle, Focusable, KeyDownEvent, MouseButton,
-    MouseDownEvent, Render, Window, WindowOptions,
+    prelude::*, App, Application, Context, FocusHandle, Focusable, KeyDownEvent, MouseDownEvent,
+    Render, Window, WindowOptions,
 };
 
 use crate::ui::style as s;
@@ -86,43 +86,74 @@ impl Render for NotesApp {
             .font_family(s::FONT)
             .bg(s::GREEN2)
             .text_color(s::GRAY6)
-            .p(s::S5)
             .child(
                 gpui::div()
-                    .flex_1()
                     .flex()
                     .flex_col()
                     .size_full()
-                    .bg(s::GRAY2)
-                    .w_full()
-                    .child(
-                        gpui::div()
-                            .h(s::S5)
-                            .px(s::S3)
-                            .flex()
-                            .items_center()
-                            .bg(s::GRAY5)
-                            .text_color(s::GREEN1)
-                            .child("notes"),
-                    )
-                    .child(
-                        s::sunken(
-                            gpui::div()
-                                .flex()
-                                .flex_col()
-                                .size_full()
-                                .p(s::S4)
-                                .bg(s::GREEN1)
-                                .track_focus(&self.focus_handle)
-                                .key_context("NoteEditor")
-                                .on_mouse_down(MouseButton::Left, cx.listener(Self::focus_editor))
-                                .on_key_down(cx.listener(Self::handle_key_down))
-                                .children(render_note_lines(lines, is_focused)),
-                        )
-                        .size_full(),
-                    ),
+                    // .child(
+                    //     gpui::div().flex_1().flex().flex_col().p(s::S5).child(
+                    //         gpui::div()
+                    //             .flex_1()
+                    //             .flex()
+                    //             .flex_col()
+                    //             .bg(s::GRAY2)
+                    //             .w_full()
+                    //             .child(
+                    //                 gpui::div()
+                    //                     .h(s::S5)
+                    //                     .px(s::S3)
+                    //                     .flex()
+                    //                     .items_center()
+                    //                     .bg(s::GRAY5)
+                    //                     .text_color(s::GREEN1)
+                    //                     .child("notes"),
+                    //             )
+                    //             .child(
+                    //                 s::sunken(
+                    //                     gpui::div()
+                    //                         .flex()
+                    //                         .flex_col()
+                    //                         .size_full()
+                    //                         .p(s::S4)
+                    //                         .bg(s::GREEN1)
+                    //                         .track_focus(&self.focus_handle)
+                    //                         .key_context("NoteEditor")
+                    //                         .on_mouse_down(
+                    //                             MouseButton::Left,
+                    //                             cx.listener(Self::focus_editor),
+                    //                         )
+                    //                         .on_key_down(cx.listener(Self::handle_key_down))
+                    //                         .children(render_note_lines(lines, is_focused)),
+                    //                 )
+                    //                 .size_full(),
+                    //             ),
+                    //     ),
+                    // )
+                    .child(toolbar()),
             )
     }
+}
+
+fn toolbar() -> impl IntoElement {
+    gpui::div()
+        .flex()
+        .items_center()
+        .border_b_2()
+        .border_color(s::GRAY3)
+        .bg(s::GRAY3)
+        .p(s::S2)
+        .child(toolbar_button("new"))
+}
+
+fn toolbar_button(label: &'static str) -> impl IntoElement {
+    s::raised(label)
+        .p(s::S2)
+        .flex()
+        .items_center()
+        .px(s::S3)
+        .bg(s::GRAY3)
+        .text_color(s::GRAY6)
 }
 
 fn render_note_lines(lines: Vec<&str>, is_focused: bool) -> Vec<impl IntoElement> {
