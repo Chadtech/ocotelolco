@@ -488,7 +488,7 @@ impl Render for Model {
             .flex_col()
             .size_full()
             .font_family(s::FONT)
-            .bg(s::GREEN2)
+            .bg(s::GREEN3)
             .text_color(s::GRAY6)
             .on_mouse_move(cx.listener(Self::moved_mouse))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::released_mouse))
@@ -524,17 +524,16 @@ fn render_note_window(
             .flex_col()
             .size_full()
             .bg(s::GRAY2)
-            .p(s::S2)
+            .p(s::S3)
             .child(
                 gpui::div()
-                    // .h(s::S5)
-                    .px(s::S3)
+                    .px(s::S4)
                     .flex()
                     .items_center()
                     .justify_between()
                     .bg(s::GRAY5)
                     .text_color(s::GREEN1)
-                    .p(s::S2)
+                    .p(s::S3)
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |model, event, window, cx| {
@@ -552,27 +551,34 @@ fn render_note_window(
                 cx,
             ))
             .child(
-                gpui::div().p(s::S2).size_full().bg(s::GRAY2).child(
-                    s::sunken(
-                        gpui::div()
-                            .flex()
-                            .flex_col()
-                            .size_full()
-                            .p(s::S2)
-                            .bg(s::GREEN1)
-                            .track_focus(focus_handle)
-                            .key_context("NoteEditor")
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(move |model, event, window, cx| {
-                                    model.pressed_note_body_editor(note_index, event, window, cx);
-                                }),
-                            )
-                            .on_key_down(cx.listener(Model::pressed_key))
-                            .children(render_note_lines(lines, show_cursor)),
-                    )
-                    .size_full(),
-                ),
+                gpui::div()
+                    .p(s::S3)
+                    .pt(s::S0)
+                    .size_full()
+                    .bg(s::GRAY2)
+                    .child(
+                        s::sunken(
+                            gpui::div()
+                                .flex()
+                                .flex_col()
+                                .size_full()
+                                .p(s::S3)
+                                .bg(s::GREEN2)
+                                .track_focus(focus_handle)
+                                .key_context("NoteEditor")
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(move |model, event, window, cx| {
+                                        model.pressed_note_body_editor(
+                                            note_index, event, window, cx,
+                                        );
+                                    }),
+                                )
+                                .on_key_down(cx.listener(Model::pressed_key))
+                                .children(render_note_lines(lines, show_cursor)),
+                        )
+                        .size_full(),
+                    ),
             ),
     )
     .child(resize_handle(note_index, cx))
@@ -606,8 +612,8 @@ fn rename_row(
                 s::sunken(
                     gpui::div()
                         .flex_1()
-                        .min_h(s::S5)
-                        .p(s::S2)
+                        .min_h(s::S6)
+                        .p(s::S3)
                         .bg(s::GREEN1)
                         .text_color(s::GRAY6)
                         .track_focus(focus_handle)
@@ -644,7 +650,7 @@ fn rename_row(
         .flex()
         .items_center()
         .bg(s::GRAY2)
-        .p(s::S2)
+        .p(s::S3)
         .child(rename_control)
 }
 
@@ -655,7 +661,7 @@ fn toolbar(new_button_pressed: bool, cx: &mut Context<Model>) -> impl IntoElemen
         .border_b_2()
         .border_color(s::GRAY3)
         .bg(s::GRAY3)
-        .p(s::S2)
+        .p(s::S3)
         .gap_3()
         .child(
             view::button::from_text("new", new_button_pressed)
@@ -699,16 +705,16 @@ fn resize_handle(note_index: usize, cx: &mut Context<Model>) -> impl IntoElement
         .absolute()
         .right_0()
         .bottom_0()
-        .size(s::S4)
+        .size(s::S5)
         .child(
             gpui::canvas(
                 |_, _, _| {},
                 |bounds, _, window, _| {
-                    let mut builder = gpui::PathBuilder::stroke(s::S1);
-                    builder.move_to(gpui::point(bounds.right() - s::S3, bounds.bottom() - s::S1));
-                    builder.line_to(gpui::point(bounds.right() - s::S1, bounds.bottom() - s::S3));
-                    builder.move_to(gpui::point(bounds.right() - s::S2, bounds.bottom() - s::S1));
-                    builder.line_to(gpui::point(bounds.right() - s::S1, bounds.bottom() - s::S2));
+                    let mut builder = gpui::PathBuilder::stroke(s::S2);
+                    builder.move_to(gpui::point(bounds.right() - s::S4, bounds.bottom() - s::S2));
+                    builder.line_to(gpui::point(bounds.right() - s::S2, bounds.bottom() - s::S4));
+                    builder.move_to(gpui::point(bounds.right() - s::S3, bounds.bottom() - s::S2));
+                    builder.line_to(gpui::point(bounds.right() - s::S2, bounds.bottom() - s::S3));
                     if let Ok(path) = builder.build() {
                         window.paint_path(path, s::GRAY1);
                     }
@@ -739,7 +745,7 @@ fn render_note_lines(lines: Vec<&str>, is_focused: bool) -> Vec<impl IntoElement
                 line.to_string()
             };
 
-            gpui::div().min_h(s::S5).text_color(s::GRAY6).child(text)
+            gpui::div().min_h(s::S6).text_color(s::GRAY6).child(text)
         })
         .collect()
 }

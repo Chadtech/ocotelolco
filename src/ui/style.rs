@@ -4,14 +4,16 @@ use gpui::{prelude::*, Div, Pixels, Rgba};
 
 pub const FONT: &str = "Fira Code";
 
-pub const S1: Pixels = gpui::px(2.0);
-pub const S2: Pixels = gpui::px(4.0);
-pub const S3: Pixels = gpui::px(8.0);
-pub const S4: Pixels = gpui::px(16.0);
-pub const S5: Pixels = gpui::px(32.0);
-pub const S6: Pixels = gpui::px(64.0);
-pub const S7: Pixels = gpui::px(128.0);
-pub const S8: Pixels = gpui::px(256.0);
+pub const S0: Pixels = gpui::px(0.0);
+pub const S1: Pixels = gpui::px(1.0);
+pub const S2: Pixels = gpui::px(2.0);
+pub const S3: Pixels = gpui::px(4.0);
+pub const S4: Pixels = gpui::px(8.0);
+pub const S5: Pixels = gpui::px(16.0);
+pub const S6: Pixels = gpui::px(32.0);
+pub const S7: Pixels = gpui::px(64.0);
+pub const S8: Pixels = gpui::px(128.0);
+pub const S9: Pixels = gpui::px(256.0);
 
 pub const GREEN1: Rgba = rgba(0x030907);
 pub const GREEN2: Rgba = rgba(0x071d10);
@@ -77,7 +79,7 @@ fn bevel_top(color: Rgba) -> impl IntoElement {
         .top_0()
         .left_0()
         .right_0()
-        .h(S1)
+        .h(S2)
         .bg(color)
 }
 
@@ -87,7 +89,7 @@ fn bevel_left(color: Rgba) -> impl IntoElement {
         .top_0()
         .bottom_0()
         .left_0()
-        .w(S1)
+        .w(S2)
         .bg(color)
 }
 
@@ -97,7 +99,7 @@ fn bevel_bottom(color: Rgba) -> impl IntoElement {
         .bottom_0()
         .left_0()
         .right_0()
-        .h(S1)
+        .h(S2)
         .bg(color)
 }
 
@@ -107,6 +109,6 @@ fn bevel_right(color: Rgba) -> impl IntoElement {
         .top_0()
         .bottom_0()
         .right_0()
-        .w(S1)
+        .w(S2)
         .bg(color)
 }

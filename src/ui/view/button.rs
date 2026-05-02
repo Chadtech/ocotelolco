@@ -25,8 +25,8 @@ fn button(label: &'static str, pressed: bool, size: Size) -> gpui::Div {
         .child(label);
 
     let button = match size {
-        Size::Text => button.p(s::S2).px(s::S3),
-        Size::Square => button.size(s::S5),
+        Size::Text => button.p(s::S3).px(s::S4),
+        Size::Square => button.size(s::S6),
     };
 
     if pressed {
