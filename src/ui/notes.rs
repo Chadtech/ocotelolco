@@ -18,6 +18,7 @@ pub fn run() {
                     active_note_index: None,
                     drag: None,
                     new_button_pressed: false,
+                    pressed_close_note_index: None,
                 })
             })
             .expect("failed to open notes window");
@@ -43,6 +44,7 @@ struct Model {
     active_note_index: Option<usize>,
     drag: Option<DragState>,
     new_button_pressed: bool,
+    pressed_close_note_index: Option<usize>,
 }
 
 struct DragState {
@@ -77,6 +79,51 @@ impl Model {
 
     fn cancel_new_note_button(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
         self.new_button_pressed = false;
+        cx.notify();
+    }
+
+    fn press_close_note_button(
+        &mut self,
+        note_index: usize,
+        _: &MouseDownEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.pressed_close_note_index = Some(note_index);
+        cx.stop_propagation();
+        cx.notify();
+    }
+
+    fn close_note(
+        &mut self,
+        note_index: usize,
+        _: &MouseUpEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if note_index >= self.notes.len() {
+            return;
+        }
+
+        self.pressed_close_note_index = None;
+        self.notes.remove(note_index);
+        self.drag = None;
+        self.active_note_index = match self.active_note_index {
+            Some(active_index) if active_index == note_index => None,
+            Some(active_index) if active_index > note_index => Some(active_index - 1),
+            active_note_index => active_note_index,
+        };
+        cx.stop_propagation();
+        cx.notify();
+    }
+
+    fn cancel_close_note_button(
+        &mut self,
+        _: &MouseUpEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.pressed_close_note_index = None;
         cx.notify();
     }
 
@@ -193,6 +240,7 @@ impl Render for Model {
                     index,
                     note,
                     &self.focus_handle,
+                    self.pressed_close_note_index == Some(index),
                     self.active_note_index == Some(index) && is_focused,
                     cx,
                 )
@@ -224,6 +272,7 @@ fn render_note_window(
     note_index: usize,
     note: &Note,
     focus_handle: &FocusHandle,
+    close_button_pressed: bool,
     show_cursor: bool,
     cx: &mut Context<Model>,
 ) -> gpui::Div {
@@ -241,28 +290,31 @@ fn render_note_window(
             .p(s::S2)
             .child(
                 gpui::div()
-                    .h(s::S5)
+                    // .h(s::S5)
                     .px(s::S3)
                     .flex()
                     .items_center()
+                    .justify_between()
                     .bg(s::GRAY5)
                     .text_color(s::GREEN1)
+                    .p(s::S2)
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |model, event, window, cx| {
                             model.begin_drag(note_index, event, window, cx);
                         }),
                     )
-                    .child(format!("note {}", note_index + 1)),
+                    .child(format!("note {}", note_index + 1))
+                    .child(close_button(note_index, close_button_pressed, cx)),
             )
             .child(
-                gpui::div().p(s::S4).size_full().bg(s::GRAY2).child(
+                gpui::div().p(s::S2).size_full().bg(s::GRAY2).child(
                     s::sunken(
                         gpui::div()
                             .flex()
                             .flex_col()
                             .size_full()
-                            .p(s::S4)
+                            .p(s::S2)
                             .bg(s::GREEN1)
                             .track_focus(focus_handle)
                             .key_context("NoteEditor")
@@ -321,6 +373,41 @@ fn toolbar_button(label: &'static str, pressed: bool) -> gpui::Div {
     } else {
         s::raised(button)
     }
+}
+
+fn close_button(note_index: usize, pressed: bool, cx: &mut Context<Model>) -> gpui::Div {
+    let button = gpui::div()
+        .size(s::S5)
+        .flex()
+        .items_center()
+        .justify_center()
+        .bg(s::GRAY3)
+        .text_color(s::GRAY6)
+        .child("X");
+
+    let button = if pressed {
+        s::sunken(button)
+    } else {
+        s::raised(button)
+    };
+
+    button
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |model, event, window, cx| {
+                model.press_close_note_button(note_index, event, window, cx);
+            }),
+        )
+        .on_mouse_up(
+            MouseButton::Left,
+            cx.listener(move |model, event, window, cx| {
+                model.close_note(note_index, event, window, cx);
+            }),
+        )
+        .on_mouse_up_out(
+            MouseButton::Left,
+            cx.listener(Model::cancel_close_note_button),
+        )
 }
 
 fn render_note_lines(lines: Vec<&str>, is_focused: bool) -> Vec<impl IntoElement> {
