@@ -3,7 +3,10 @@ use gpui::{
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Render, Window, WindowOptions,
 };
 
-use crate::ui::{style as s, view};
+pub mod style;
+pub mod view;
+
+use crate::ui::style as s;
 
 pub fn run() {
     Application::new().run(|cx: &mut App| {
@@ -498,6 +501,15 @@ impl Render for Model {
                     .flex_1()
                     .flex()
                     .size_full()
+                    .child(
+                        gpui::img(std::path::Path::new(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/ocotelolco_bg.png"
+                        )))
+                        .absolute()
+                        .size_full()
+                        .object_fit(gpui::ObjectFit::Cover),
+                    )
                     .children(note_windows),
             )
             .child(toolbar(self.new_button_pressed, cx))
@@ -658,13 +670,13 @@ fn toolbar(new_button_pressed: bool, cx: &mut Context<Model>) -> impl IntoElemen
     gpui::div()
         .flex()
         .items_center()
-        .border_b_2()
+        .border_t_2()
         .border_color(s::GRAY3)
-        .bg(s::GRAY3)
+        .bg(s::GRAY2)
         .p(s::S3)
         .gap_3()
         .child(
-            view::button::from_text("new", new_button_pressed)
+            view::button::from_text("new note", new_button_pressed)
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(Model::pressed_new_note_button),

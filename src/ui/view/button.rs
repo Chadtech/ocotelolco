@@ -20,7 +20,7 @@ fn button(label: &'static str, pressed: bool, size: Size) -> gpui::Div {
         .flex()
         .items_center()
         .justify_center()
-        .bg(s::GRAY3)
+        .bg(s::GRAY2)
         .text_color(s::GRAY6)
         .child(label);
 

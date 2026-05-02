@@ -20,6 +20,6 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Notes => ui::notes::run(),
+        Command::Notes => ui::run(),
     }
 }

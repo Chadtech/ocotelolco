@@ -49,8 +49,8 @@ pub fn raised(child: impl IntoElement) -> Div {
     gpui::div()
         .relative()
         .child(child)
-        .child(bevel_top(GRAY4))
-        .child(bevel_left(GRAY4))
+        .child(bevel_top(GRAY3))
+        .child(bevel_left(GRAY3))
         .child(bevel_bottom(GRAY1))
         .child(bevel_right(GRAY1))
 }
@@ -61,8 +61,8 @@ pub fn sunken(child: impl IntoElement) -> Div {
         .child(child)
         .child(bevel_top(GRAY1))
         .child(bevel_left(GRAY1))
-        .child(bevel_bottom(GRAY4))
-        .child(bevel_right(GRAY4))
+        .child(bevel_bottom(GRAY3))
+        .child(bevel_right(GRAY3))
 }
 
 const fn rgba(hex: u32) -> Rgba {
