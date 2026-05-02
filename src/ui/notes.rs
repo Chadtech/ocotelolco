@@ -456,12 +456,20 @@ fn resize_handle(note_index: usize, cx: &mut Context<Model>) -> impl IntoElement
         .bottom_0()
         .size(s::S4)
         .child(
-            gpui::div()
-                .absolute()
-                .right_0()
-                .bottom_0()
-                .size(s::S2)
-                .bg(s::GRAY4),
+            gpui::canvas(
+                |_, _, _| {},
+                |bounds, _, window, _| {
+                    let mut builder = gpui::PathBuilder::stroke(s::S1);
+                    builder.move_to(gpui::point(bounds.right() - s::S3, bounds.bottom() - s::S1));
+                    builder.line_to(gpui::point(bounds.right() - s::S1, bounds.bottom() - s::S3));
+                    builder.move_to(gpui::point(bounds.right() - s::S2, bounds.bottom() - s::S1));
+                    builder.line_to(gpui::point(bounds.right() - s::S1, bounds.bottom() - s::S2));
+                    if let Ok(path) = builder.build() {
+                        window.paint_path(path, s::GRAY1);
+                    }
+                },
+            )
+            .size_full(),
         )
         .on_mouse_down(
             MouseButton::Left,
