@@ -17,6 +17,7 @@ pub fn run() {
                     notes: Vec::new(),
                     active_note_index: None,
                     drag: None,
+                    new_button_pressed: false,
                 })
             })
             .expect("failed to open notes window");
@@ -41,6 +42,7 @@ struct Model {
     notes: Vec<Note>,
     active_note_index: Option<usize>,
     drag: Option<DragState>,
+    new_button_pressed: bool,
 }
 
 struct DragState {
@@ -50,7 +52,18 @@ struct DragState {
 }
 
 impl Model {
+    fn press_new_note_button(
+        &mut self,
+        _: &MouseDownEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.new_button_pressed = true;
+        cx.notify();
+    }
+
     fn new_note(&mut self, _: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.new_button_pressed = false;
         let offset = self.notes.len() as f32 * 24.0;
         self.notes.push(Note {
             content: String::new(),
@@ -59,6 +72,11 @@ impl Model {
         });
         self.active_note_index = Some(self.notes.len() - 1);
         window.focus(&self.focus_handle);
+        cx.notify();
+    }
+
+    fn cancel_new_note_button(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.new_button_pressed = false;
         cx.notify();
     }
 
@@ -198,7 +216,7 @@ impl Render for Model {
                     .size_full()
                     .children(note_windows),
             )
-            .child(toolbar(cx))
+            .child(toolbar(self.new_button_pressed, cx))
     }
 }
 
@@ -220,6 +238,7 @@ fn render_note_window(
             .flex_col()
             .size_full()
             .bg(s::GRAY2)
+            .p(s::S2)
             .child(
                 gpui::div()
                     .h(s::S5)
@@ -263,12 +282,11 @@ fn render_note_window(
     .absolute()
     .left(gpui::px(note.x))
     .top(gpui::px(note.y))
-    .p(s::S2)
     .w(s::S8)
     .h(s::S8)
 }
 
-fn toolbar(cx: &mut Context<Model>) -> impl IntoElement {
+fn toolbar(new_button_pressed: bool, cx: &mut Context<Model>) -> impl IntoElement {
     gpui::div()
         .flex()
         .items_center()
@@ -277,17 +295,32 @@ fn toolbar(cx: &mut Context<Model>) -> impl IntoElement {
         .bg(s::GRAY3)
         .p(s::S2)
         .gap_3()
-        .child(toolbar_button("new").on_mouse_up(MouseButton::Left, cx.listener(Model::new_note)))
+        .child(
+            toolbar_button("new", new_button_pressed)
+                .on_mouse_down(MouseButton::Left, cx.listener(Model::press_new_note_button))
+                .on_mouse_up(MouseButton::Left, cx.listener(Model::new_note))
+                .on_mouse_up_out(
+                    MouseButton::Left,
+                    cx.listener(Model::cancel_new_note_button),
+                ),
+        )
 }
 
-fn toolbar_button(label: &'static str) -> gpui::Div {
-    s::raised(label)
+fn toolbar_button(label: &'static str, pressed: bool) -> gpui::Div {
+    let button = gpui::div()
         .p(s::S2)
         .flex()
         .items_center()
         .px(s::S3)
         .bg(s::GRAY3)
         .text_color(s::GRAY6)
+        .child(label);
+
+    if pressed {
+        s::sunken(button)
+    } else {
+        s::raised(button)
+    }
 }
 
 fn render_note_lines(lines: Vec<&str>, is_focused: bool) -> Vec<impl IntoElement> {
