@@ -3,7 +3,7 @@ use gpui::{
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Render, Window, WindowOptions,
 };
 
-use crate::ui::style as s;
+use crate::ui::{style as s, view};
 
 pub fn run() {
     Application::new().run(|cx: &mut App| {
@@ -348,7 +348,7 @@ fn toolbar(new_button_pressed: bool, cx: &mut Context<Model>) -> impl IntoElemen
         .p(s::S2)
         .gap_3()
         .child(
-            toolbar_button("new", new_button_pressed)
+            view::button::from_text("new", new_button_pressed)
                 .on_mouse_down(MouseButton::Left, cx.listener(Model::press_new_note_button))
                 .on_mouse_up(MouseButton::Left, cx.listener(Model::new_note))
                 .on_mouse_up_out(
@@ -358,40 +358,8 @@ fn toolbar(new_button_pressed: bool, cx: &mut Context<Model>) -> impl IntoElemen
         )
 }
 
-fn toolbar_button(label: &'static str, pressed: bool) -> gpui::Div {
-    let button = gpui::div()
-        .p(s::S2)
-        .flex()
-        .items_center()
-        .px(s::S3)
-        .bg(s::GRAY3)
-        .text_color(s::GRAY6)
-        .child(label);
-
-    if pressed {
-        s::sunken(button)
-    } else {
-        s::raised(button)
-    }
-}
-
 fn close_button(note_index: usize, pressed: bool, cx: &mut Context<Model>) -> gpui::Div {
-    let button = gpui::div()
-        .size(s::S5)
-        .flex()
-        .items_center()
-        .justify_center()
-        .bg(s::GRAY3)
-        .text_color(s::GRAY6)
-        .child("X");
-
-    let button = if pressed {
-        s::sunken(button)
-    } else {
-        s::raised(button)
-    };
-
-    button
+    view::button::x(pressed)
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(move |model, event, window, cx| {
