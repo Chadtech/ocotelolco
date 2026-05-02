@@ -16,7 +16,7 @@ pub fn run() {
                     focus_handle,
                     notes: Vec::new(),
                     active_note_index: None,
-                    drag: None,
+                    pointer_interaction: None,
                     new_button_pressed: false,
                     pressed_close_note_index: None,
                 })
@@ -36,22 +36,32 @@ struct Note {
     content: String,
     x: f32,
     y: f32,
+    width: f32,
+    height: f32,
 }
 
 struct Model {
     focus_handle: FocusHandle,
     notes: Vec<Note>,
     active_note_index: Option<usize>,
-    drag: Option<DragState>,
+    pointer_interaction: Option<PointerInteraction>,
     new_button_pressed: bool,
     pressed_close_note_index: Option<usize>,
 }
 
-struct DragState {
+enum PointerInteraction {
+    Drag(PointerInteractionState),
+    Resize(PointerInteractionState),
+}
+
+struct PointerInteractionState {
     note_index: usize,
     last_x: f32,
     last_y: f32,
 }
+
+const DEFAULT_NOTE_SIZE: f32 = 256.0;
+const MIN_NOTE_SIZE: f32 = 128.0;
 
 impl Model {
     fn press_new_note_button(
@@ -71,6 +81,8 @@ impl Model {
             content: String::new(),
             x: 32.0 + offset,
             y: 32.0 + offset,
+            width: DEFAULT_NOTE_SIZE,
+            height: DEFAULT_NOTE_SIZE,
         });
         self.active_note_index = Some(self.notes.len() - 1);
         window.focus(&self.focus_handle);
@@ -107,7 +119,7 @@ impl Model {
 
         self.pressed_close_note_index = None;
         self.notes.remove(note_index);
-        self.drag = None;
+        self.pointer_interaction = None;
         self.active_note_index = match self.active_note_index {
             Some(active_index) if active_index == note_index => None,
             Some(active_index) if active_index > note_index => Some(active_index - 1),
@@ -132,6 +144,62 @@ impl Model {
             .and_then(|index| self.notes.get_mut(index))
     }
 
+    fn pointer_note_mut(&mut self, note_index: usize, cx: &mut Context<Self>) -> Option<&mut Note> {
+        if note_index >= self.notes.len() {
+            self.pointer_interaction = None;
+            cx.notify();
+            return None;
+        }
+
+        self.notes.get_mut(note_index)
+    }
+
+    fn handle_mouse_move(
+        &mut self,
+        event: &MouseMoveEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(mut pointer_interaction) = self.pointer_interaction.take() else {
+            return;
+        };
+        if !event.dragging() {
+            cx.notify();
+            return;
+        }
+
+        let x = f32::from(event.position.x);
+        let y = f32::from(event.position.y);
+        match &mut pointer_interaction {
+            PointerInteraction::Drag(state) => {
+                let dx = x - state.last_x;
+                let dy = y - state.last_y;
+                state.last_x = x;
+                state.last_y = y;
+
+                let Some(note) = self.pointer_note_mut(state.note_index, cx) else {
+                    return;
+                };
+                note.x += dx;
+                note.y += dy;
+            }
+            PointerInteraction::Resize(state) => {
+                let dx = x - state.last_x;
+                let dy = y - state.last_y;
+                state.last_x = x;
+                state.last_y = y;
+
+                let Some(note) = self.pointer_note_mut(state.note_index, cx) else {
+                    return;
+                };
+                note.width = (note.width + dx).max(MIN_NOTE_SIZE);
+                note.height = (note.height + dy).max(MIN_NOTE_SIZE);
+            }
+        }
+        self.pointer_interaction = Some(pointer_interaction);
+        cx.notify();
+    }
+
     fn begin_drag(
         &mut self,
         note_index: usize,
@@ -140,42 +208,41 @@ impl Model {
         cx: &mut Context<Self>,
     ) {
         self.active_note_index = Some(note_index);
-        self.drag = Some(DragState {
+        self.pointer_interaction = Some(PointerInteraction::Drag(PointerInteractionState {
             note_index,
             last_x: event.position.x.into(),
             last_y: event.position.y.into(),
-        });
+        }));
         window.focus(&self.focus_handle);
         cx.stop_propagation();
         cx.notify();
     }
 
-    fn drag_note(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
-        let Some(drag) = self.drag.as_mut() else {
-            return;
-        };
-        if !event.dragging() {
-            self.drag = None;
-            cx.notify();
-            return;
-        }
-
-        let x = f32::from(event.position.x);
-        let y = f32::from(event.position.y);
-        let dx = x - drag.last_x;
-        let dy = y - drag.last_y;
-        drag.last_x = x;
-        drag.last_y = y;
-
-        if let Some(note) = self.notes.get_mut(drag.note_index) {
-            note.x += dx;
-            note.y += dy;
-            cx.notify();
-        }
+    fn begin_resize(
+        &mut self,
+        note_index: usize,
+        event: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.active_note_index = Some(note_index);
+        self.pointer_interaction = Some(PointerInteraction::Resize(PointerInteractionState {
+            note_index,
+            last_x: event.position.x.into(),
+            last_y: event.position.y.into(),
+        }));
+        window.focus(&self.focus_handle);
+        cx.stop_propagation();
+        cx.notify();
     }
 
-    fn end_drag(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
-        self.drag = None;
+    fn end_pointer_interaction(
+        &mut self,
+        _: &MouseUpEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.pointer_interaction = None;
         cx.notify();
     }
 
@@ -254,8 +321,11 @@ impl Render for Model {
             .font_family(s::FONT)
             .bg(s::GREEN2)
             .text_color(s::GRAY6)
-            .on_mouse_move(cx.listener(Self::drag_note))
-            .on_mouse_up(MouseButton::Left, cx.listener(Self::end_drag))
+            .on_mouse_move(cx.listener(Self::handle_mouse_move))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(Self::end_pointer_interaction),
+            )
             .child(
                 gpui::div()
                     .relative()
@@ -331,11 +401,12 @@ fn render_note_window(
                 ),
             ),
     )
+    .child(resize_handle(note_index, cx))
     .absolute()
     .left(gpui::px(note.x))
     .top(gpui::px(note.y))
-    .w(s::S8)
-    .h(s::S8)
+    .w(gpui::px(note.width))
+    .h(gpui::px(note.height))
 }
 
 fn toolbar(new_button_pressed: bool, cx: &mut Context<Model>) -> impl IntoElement {
@@ -375,6 +446,28 @@ fn close_button(note_index: usize, pressed: bool, cx: &mut Context<Model>) -> gp
         .on_mouse_up_out(
             MouseButton::Left,
             cx.listener(Model::cancel_close_note_button),
+        )
+}
+
+fn resize_handle(note_index: usize, cx: &mut Context<Model>) -> impl IntoElement {
+    gpui::div()
+        .absolute()
+        .right_0()
+        .bottom_0()
+        .size(s::S4)
+        .child(
+            gpui::div()
+                .absolute()
+                .right_0()
+                .bottom_0()
+                .size(s::S2)
+                .bg(s::GRAY4),
+        )
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |model, event, window, cx| {
+                model.begin_resize(note_index, event, window, cx);
+            }),
         )
 }
 
