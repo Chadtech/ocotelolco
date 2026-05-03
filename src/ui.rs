@@ -1,12 +1,16 @@
 use gpui::{
-    prelude::*, App, Application, Context, FocusHandle, Focusable, KeyDownEvent, MouseButton,
+    prelude::*, App, Application, Context, EventEmitter, FocusHandle, Focusable, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Render, Window, WindowOptions,
 };
 
+pub mod field;
+mod note;
 pub mod style;
 pub mod view;
 
+use crate::ui::field::FieldId;
 use crate::ui::style as s;
+use note::Note;
 
 pub fn run() {
     Application::new().run(|cx: &mut App| {
@@ -15,14 +19,18 @@ pub fn run() {
                 window.set_window_title("Ocotelolco Notes");
                 let focus_handle = cx.focus_handle();
 
-                cx.new(|_| Model {
-                    focus_handle,
-                    notes: Vec::new(),
-                    active_field: None,
-                    next_note_id: 1,
-                    pointer_interaction: None,
-                    new_button_pressed: false,
-                    pressed_close_note_index: None,
+                cx.new(|cx| {
+                    cx.subscribe_self(Model::handled_note_event).detach();
+
+                    Model {
+                        focus_handle,
+                        notes: Vec::new(),
+                        active_field: None,
+                        next_note_id: 1,
+                        pointer_interaction: None,
+                        new_button_pressed: false,
+                        pressed_close_note_index: None,
+                    }
                 })
             })
             .expect("failed to open notes window");
@@ -36,18 +44,7 @@ pub fn run() {
     });
 }
 
-struct Note {
-    id: u64,
-    name: String,
-    is_renaming: bool,
-    content: String,
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-}
-
-struct Model {
+pub(super) struct Model {
     focus_handle: FocusHandle,
     notes: Vec<Note>,
     active_field: Option<FieldId>,
@@ -68,9 +65,6 @@ struct PointerInteractionState {
     last_y: f32,
 }
 
-#[derive(Clone, PartialEq, Eq)]
-struct FieldId(String);
-
 #[derive(Clone, Copy)]
 struct ActiveField {
     note_index: usize,
@@ -81,19 +75,6 @@ struct ActiveField {
 enum FieldKind {
     Body,
     Name,
-}
-
-const DEFAULT_NOTE_SIZE: f32 = 256.0;
-const MIN_NOTE_SIZE: f32 = 128.0;
-
-impl Note {
-    fn name_field_id(&self) -> FieldId {
-        FieldId(format!("note-{}/name", self.id))
-    }
-
-    fn body_field_id(&self) -> FieldId {
-        FieldId(format!("note-{}/body", self.id))
-    }
 }
 
 impl Model {
@@ -118,16 +99,8 @@ impl Model {
         let note_id = self.next_note_id;
         self.next_note_id += 1;
         let body_field_id = FieldId(format!("note-{note_id}/body"));
-        self.notes.push(Note {
-            id: note_id,
-            name: format!("note {}", self.notes.len() + 1),
-            is_renaming: false,
-            content: String::new(),
-            x: 32.0 + offset,
-            y: 32.0 + offset,
-            width: DEFAULT_NOTE_SIZE,
-            height: DEFAULT_NOTE_SIZE,
-        });
+        self.notes
+            .push(Note::new(note_id, self.notes.len() + 1, offset));
         self.active_field = Some(body_field_id);
         window.focus(&self.focus_handle);
         cx.notify();
@@ -140,52 +113,6 @@ impl Model {
         cx: &mut Context<Self>,
     ) {
         self.new_button_pressed = false;
-        cx.notify();
-    }
-
-    fn pressed_close_note_button(
-        &mut self,
-        note_index: usize,
-        _: &MouseDownEvent,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.pressed_close_note_index = Some(note_index);
-        cx.stop_propagation();
-        cx.notify();
-    }
-
-    fn clicked_close_note_button(
-        &mut self,
-        note_index: usize,
-        _: &MouseUpEvent,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if note_index >= self.notes.len() {
-            return;
-        }
-
-        self.pressed_close_note_index = None;
-        let closed_note = &self.notes[note_index];
-        if self.active_field == Some(closed_note.name_field_id())
-            || self.active_field == Some(closed_note.body_field_id())
-        {
-            self.active_field = None;
-        }
-        self.notes.remove(note_index);
-        self.pointer_interaction = None;
-        cx.stop_propagation();
-        cx.notify();
-    }
-
-    fn released_close_note_button_outside(
-        &mut self,
-        _: &MouseUpEvent,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.pressed_close_note_index = None;
         cx.notify();
     }
 
@@ -254,51 +181,11 @@ impl Model {
                 let Some(note) = self.pointer_note_mut(state.note_index, cx) else {
                     return;
                 };
-                note.width = (note.width + dx).max(MIN_NOTE_SIZE);
-                note.height = (note.height + dy).max(MIN_NOTE_SIZE);
+                note.width = (note.width + dx).max(note::MIN_SIZE);
+                note.height = (note.height + dy).max(note::MIN_SIZE);
             }
         }
         self.pointer_interaction = Some(pointer_interaction);
-        cx.notify();
-    }
-
-    fn pressed_note_header(
-        &mut self,
-        note_index: usize,
-        event: &MouseDownEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(note) = self.notes.get(note_index) {
-            self.active_field = Some(note.body_field_id());
-        }
-        self.pointer_interaction = Some(PointerInteraction::Drag(PointerInteractionState {
-            note_index,
-            last_x: event.position.x.into(),
-            last_y: event.position.y.into(),
-        }));
-        window.focus(&self.focus_handle);
-        cx.stop_propagation();
-        cx.notify();
-    }
-
-    fn pressed_resize_handle(
-        &mut self,
-        note_index: usize,
-        event: &MouseDownEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(note) = self.notes.get(note_index) {
-            self.active_field = Some(note.body_field_id());
-        }
-        self.pointer_interaction = Some(PointerInteraction::Resize(PointerInteractionState {
-            note_index,
-            last_x: event.position.x.into(),
-            last_y: event.position.y.into(),
-        }));
-        window.focus(&self.focus_handle);
-        cx.stop_propagation();
         cx.notify();
     }
 
@@ -307,154 +194,162 @@ impl Model {
         cx.notify();
     }
 
-    fn pressed_note_body_editor(
-        &mut self,
-        note_index: usize,
-        _: &MouseDownEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(note) = self.notes.get(note_index) {
-            self.active_field = Some(note.body_field_id());
-        }
-        window.focus(&self.focus_handle);
-        cx.notify();
-    }
-
-    fn clicked_rename_note(
-        &mut self,
-        note_index: usize,
-        _: &MouseUpEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if note_index >= self.notes.len() {
-            return;
-        }
-
-        if let Some(note) = self.notes.get_mut(note_index) {
-            note.is_renaming = true;
-            self.active_field = Some(note.name_field_id());
-        }
-        window.focus(&self.focus_handle);
-        cx.stop_propagation();
-        cx.notify();
-    }
-
-    fn pressed_note_name_editor(
-        &mut self,
-        note_index: usize,
-        _: &MouseDownEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(note) = self.notes.get(note_index) {
-            self.active_field = Some(note.name_field_id());
-        }
-        window.focus(&self.focus_handle);
-        cx.stop_propagation();
-        cx.notify();
-    }
-
-    fn clicked_save_note_name(
-        &mut self,
-        note_index: usize,
-        _: &MouseUpEvent,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(note) = self.notes.get_mut(note_index) {
-            note.is_renaming = false;
-            if self.active_field == Some(note.name_field_id()) {
-                self.active_field = Some(note.body_field_id());
-            }
-        }
-        cx.stop_propagation();
-        cx.notify();
-    }
-
-    fn pressed_key(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
-        if event.keystroke.modifiers.platform || event.keystroke.modifiers.control {
-            return;
-        }
-
+    fn pressed_name_key(&mut self, key_press: &note::KeyPress, cx: &mut Context<Self>) {
         let Some(active_field) = self.active_field() else {
             self.active_field = None;
             return;
         };
 
-        if active_field.kind == FieldKind::Name {
-            self.pressed_name_key(event, cx);
-            return;
-        }
-
-        let Some(note) = self.notes.get_mut(active_field.note_index) else {
-            self.active_field = None;
-            return;
-        };
-
-        match event.keystroke.key.as_str() {
-            "backspace" => {
-                note.content.pop();
-                cx.stop_propagation();
-                cx.notify();
-            }
-            "enter" => {
-                note.content.push('\n');
-                cx.stop_propagation();
-                cx.notify();
-            }
-            _ => {
-                if let Some(key_char) = event.keystroke.key_char.as_ref() {
-                    note.content.push_str(key_char);
-                    cx.stop_propagation();
-                    cx.notify();
-                }
-            }
-        }
-    }
-
-    fn pressed_name_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
-        let Some(active_field) = self.active_field() else {
-            self.active_field = None;
-            return;
-        };
-
-        match event.keystroke.key.as_str() {
-            "backspace" => {
+        match key_press {
+            note::KeyPress::Backspace => {
                 if let Some(note) = self.notes.get_mut(active_field.note_index) {
-                    note.name.pop();
+                    note.pressed_name_backspace();
                 }
-                cx.stop_propagation();
                 cx.notify();
             }
-            "enter" => {
+            note::KeyPress::Enter => {
                 let body_field_id = if let Some(note) = self.notes.get_mut(active_field.note_index)
                 {
-                    note.is_renaming = false;
+                    note.clicked_save_name();
                     note.body_field_id()
                 } else {
                     self.active_field = None;
-                    cx.stop_propagation();
                     cx.notify();
                     return;
                 };
                 self.active_field = Some(body_field_id);
-                cx.stop_propagation();
                 cx.notify();
             }
-            _ => {
-                if let Some(key_char) = event.keystroke.key_char.as_ref() {
-                    if let Some(note) = self.notes.get_mut(active_field.note_index) {
-                        note.name.push_str(key_char);
+            note::KeyPress::Text(key_char) => {
+                if let Some(note) = self.notes.get_mut(active_field.note_index) {
+                    note.pressed_name_key(key_char);
+                }
+                cx.notify();
+            }
+        }
+    }
+
+    fn handled_note_event(&mut self, event: &note::Event, cx: &mut Context<Self>) {
+        match event {
+            note::Event::PressedHeader { note_index, x, y } => {
+                let ni = *note_index;
+                if let Some(note) = self.notes.get(ni) {
+                    self.active_field = Some(note.body_field_id());
+                }
+                self.pointer_interaction =
+                    Some(PointerInteraction::Drag(PointerInteractionState {
+                        note_index: ni,
+                        last_x: *x,
+                        last_y: *y,
+                    }));
+                cx.notify();
+            }
+            note::Event::PressedResizeHandle { note_index, x, y } => {
+                let ni = *note_index;
+                if let Some(note) = self.notes.get(ni) {
+                    self.active_field = Some(note.body_field_id());
+                }
+                self.pointer_interaction =
+                    Some(PointerInteraction::Resize(PointerInteractionState {
+                        note_index: ni,
+                        last_x: *x,
+                        last_y: *y,
+                    }));
+                cx.notify();
+            }
+            note::Event::PressedBodyEditor { note_index } => {
+                if let Some(note) = self.notes.get(*note_index) {
+                    self.active_field = Some(note.body_field_id());
+                }
+                cx.notify();
+            }
+            note::Event::PressedNameEditor { note_index } => {
+                if let Some(note) = self.notes.get(*note_index) {
+                    self.active_field = Some(note.name_field_id());
+                }
+                cx.notify();
+            }
+            note::Event::ClickedRename { note_index } => {
+                let ni = *note_index;
+                if ni >= self.notes.len() {
+                    return;
+                }
+
+                if let Some(note) = self.notes.get_mut(ni) {
+                    note.clicked_rename();
+                    self.active_field = Some(note.name_field_id());
+                }
+                cx.notify();
+            }
+            note::Event::ClickedSaveName { note_index } => {
+                let ni = *note_index;
+                if let Some(note) = self.notes.get_mut(ni) {
+                    note.clicked_save_name();
+                    if self.active_field == Some(note.name_field_id()) {
+                        self.active_field = Some(note.body_field_id());
                     }
-                    cx.stop_propagation();
+                }
+                cx.notify();
+            }
+            note::Event::PressedCloseButton { note_index } => {
+                self.pressed_close_note_index = Some(*note_index);
+                cx.notify();
+            }
+            note::Event::ClickedCloseButton { note_index } => {
+                let ni = *note_index;
+
+                if let Some(closed_note) = self.notes.get(ni) {
+                    self.pressed_close_note_index = None;
+                    if self.active_field == Some(closed_note.name_field_id())
+                        || self.active_field == Some(closed_note.body_field_id())
+                    {
+                        self.active_field = None;
+                    }
+                    self.notes.remove(ni);
+                    self.pointer_interaction = None;
                     cx.notify();
+                }
+            }
+            note::Event::ReleasedCloseButtonOutside => {
+                self.pressed_close_note_index = None;
+                cx.notify();
+            }
+            note::Event::PressedKey(key_press) => {
+                let Some(active_field) = self.active_field() else {
+                    self.active_field = None;
+                    return;
+                };
+
+                if active_field.kind == FieldKind::Name {
+                    self.pressed_name_key(key_press, cx);
+                    return;
+                }
+
+                let Some(note) = self.notes.get_mut(active_field.note_index) else {
+                    self.active_field = None;
+                    return;
+                };
+
+                match key_press {
+                    note::KeyPress::Backspace => {
+                        note.content.pop();
+                        cx.notify();
+                    }
+                    note::KeyPress::Enter => {
+                        note.content.push('\n');
+                        cx.notify();
+                    }
+                    note::KeyPress::Text(key_char) => {
+                        note.content.push_str(key_char);
+                        cx.notify();
+                    }
                 }
             }
         }
     }
 }
+
+impl EventEmitter<note::Event> for Model {}
 
 impl Focusable for Model {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -474,7 +369,7 @@ impl Render for Model {
                     self.active_field == Some(note.body_field_id()) && is_focused;
                 let show_name_cursor =
                     self.active_field == Some(note.name_field_id()) && is_focused;
-                render_note_window(
+                note::render(
                     index,
                     note,
                     &self.focus_handle,
@@ -516,156 +411,6 @@ impl Render for Model {
     }
 }
 
-fn render_note_window(
-    note_index: usize,
-    note: &Note,
-    focus_handle: &FocusHandle,
-    close_button_pressed: bool,
-    show_cursor: bool,
-    show_name_cursor: bool,
-    cx: &mut Context<Model>,
-) -> gpui::Div {
-    let mut lines = note.content.split('\n').collect::<Vec<_>>();
-    if lines.is_empty() {
-        lines.push("");
-    }
-
-    s::raised(
-        gpui::div()
-            .flex()
-            .flex_col()
-            .size_full()
-            .bg(s::GRAY2)
-            .p(s::S3)
-            .child(
-                gpui::div()
-                    .px(s::S4)
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .bg(s::GRAY5)
-                    .text_color(s::GREEN1)
-                    .p(s::S3)
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |model, event, window, cx| {
-                            model.pressed_note_header(note_index, event, window, cx);
-                        }),
-                    )
-                    .child(note.name.clone())
-                    .child(close_button(note_index, close_button_pressed, cx)),
-            )
-            .child(rename_row(
-                note_index,
-                note,
-                focus_handle,
-                show_name_cursor,
-                cx,
-            ))
-            .child(
-                gpui::div()
-                    .p(s::S3)
-                    .pt(s::S0)
-                    .size_full()
-                    .bg(s::GRAY2)
-                    .child(
-                        s::sunken(
-                            gpui::div()
-                                .flex()
-                                .flex_col()
-                                .size_full()
-                                .p(s::S3)
-                                .bg(s::GREEN2)
-                                .track_focus(focus_handle)
-                                .key_context("NoteEditor")
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    cx.listener(move |model, event, window, cx| {
-                                        model.pressed_note_body_editor(
-                                            note_index, event, window, cx,
-                                        );
-                                    }),
-                                )
-                                .on_key_down(cx.listener(Model::pressed_key))
-                                .children(render_note_lines(lines, show_cursor)),
-                        )
-                        .size_full(),
-                    ),
-            ),
-    )
-    .child(resize_handle(note_index, cx))
-    .absolute()
-    .left(gpui::px(note.x))
-    .top(gpui::px(note.y))
-    .w(gpui::px(note.width))
-    .h(gpui::px(note.height))
-}
-
-fn rename_row(
-    note_index: usize,
-    note: &Note,
-    focus_handle: &FocusHandle,
-    show_name_cursor: bool,
-    cx: &mut Context<Model>,
-) -> impl IntoElement {
-    let name = if show_name_cursor {
-        format!("{}|", note.name)
-    } else {
-        note.name.clone()
-    };
-
-    let rename_control = if note.is_renaming {
-        gpui::div()
-            .flex()
-            .items_center()
-            .gap_2()
-            .size_full()
-            .child(
-                s::sunken(
-                    gpui::div()
-                        .flex_1()
-                        .min_h(s::S6)
-                        .p(s::S3)
-                        .bg(s::GREEN1)
-                        .text_color(s::GRAY6)
-                        .track_focus(focus_handle)
-                        .key_context("NoteNameEditor")
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(move |model, event, window, cx| {
-                                model.pressed_note_name_editor(note_index, event, window, cx);
-                            }),
-                        )
-                        .on_key_down(cx.listener(Model::pressed_key))
-                        .child(name),
-                )
-                .flex_1(),
-            )
-            .child(view::button::from_text("save name", false).on_mouse_up(
-                MouseButton::Left,
-                cx.listener(move |model, event, window, cx| {
-                    model.clicked_save_note_name(note_index, event, window, cx);
-                }),
-            ))
-    } else {
-        gpui::div().flex().items_center().size_full().child(
-            view::button::from_text("rename", false).on_mouse_up(
-                MouseButton::Left,
-                cx.listener(move |model, event, window, cx| {
-                    model.clicked_rename_note(note_index, event, window, cx);
-                }),
-            ),
-        )
-    };
-
-    gpui::div()
-        .flex()
-        .items_center()
-        .bg(s::GRAY2)
-        .p(s::S3)
-        .child(rename_control)
-}
-
 fn toolbar(new_button_pressed: bool, cx: &mut Context<Model>) -> impl IntoElement {
     gpui::div()
         .flex()
@@ -690,74 +435,4 @@ fn toolbar(new_button_pressed: bool, cx: &mut Context<Model>) -> impl IntoElemen
                     cx.listener(Model::released_new_note_button_outside),
                 ),
         )
-}
-
-fn close_button(note_index: usize, pressed: bool, cx: &mut Context<Model>) -> gpui::Div {
-    view::button::x(pressed)
-        .on_mouse_down(
-            MouseButton::Left,
-            cx.listener(move |model, event, window, cx| {
-                model.pressed_close_note_button(note_index, event, window, cx);
-            }),
-        )
-        .on_mouse_up(
-            MouseButton::Left,
-            cx.listener(move |model, event, window, cx| {
-                model.clicked_close_note_button(note_index, event, window, cx);
-            }),
-        )
-        .on_mouse_up_out(
-            MouseButton::Left,
-            cx.listener(Model::released_close_note_button_outside),
-        )
-}
-
-fn resize_handle(note_index: usize, cx: &mut Context<Model>) -> impl IntoElement {
-    gpui::div()
-        .absolute()
-        .right_0()
-        .bottom_0()
-        .size(s::S5)
-        .child(
-            gpui::canvas(
-                |_, _, _| {},
-                |bounds, _, window, _| {
-                    let mut builder = gpui::PathBuilder::stroke(s::S2);
-                    builder.move_to(gpui::point(bounds.right() - s::S4, bounds.bottom() - s::S2));
-                    builder.line_to(gpui::point(bounds.right() - s::S2, bounds.bottom() - s::S4));
-                    builder.move_to(gpui::point(bounds.right() - s::S3, bounds.bottom() - s::S2));
-                    builder.line_to(gpui::point(bounds.right() - s::S2, bounds.bottom() - s::S3));
-                    if let Ok(path) = builder.build() {
-                        window.paint_path(path, s::GRAY1);
-                    }
-                },
-            )
-            .size_full(),
-        )
-        .on_mouse_down(
-            MouseButton::Left,
-            cx.listener(move |model, event, window, cx| {
-                model.pressed_resize_handle(note_index, event, window, cx);
-            }),
-        )
-}
-
-fn render_note_lines(lines: Vec<&str>, is_focused: bool) -> Vec<impl IntoElement> {
-    let last_index = lines.len().saturating_sub(1);
-
-    lines
-        .into_iter()
-        .enumerate()
-        .map(move |(index, line)| {
-            let text = if is_focused && index == last_index {
-                format!("{line}|")
-            } else if line.is_empty() {
-                " ".to_string()
-            } else {
-                line.to_string()
-            };
-
-            gpui::div().min_h(s::S6).text_color(s::GRAY6).child(text)
-        })
-        .collect()
 }
