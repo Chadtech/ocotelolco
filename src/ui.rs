@@ -28,8 +28,7 @@ pub fn run() {
                         active_field: None,
                         next_note_id: 1,
                         pointer_interaction: None,
-                        new_button_pressed: false,
-                        pressed_close_note_index: None,
+                        pressed_button: None,
                     }
                 })
             })
@@ -50,8 +49,16 @@ pub(super) struct Model {
     active_field: Option<FieldId>,
     next_note_id: u64,
     pointer_interaction: Option<PointerInteraction>,
-    new_button_pressed: bool,
-    pressed_close_note_index: Option<usize>,
+    pressed_button: Option<ButtonId>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+enum ButtonId {
+    NewNote,
+    NoteButtonId {
+        note_index: usize,
+        button_id: note::ButtonId,
+    },
 }
 
 enum PointerInteraction {
@@ -84,7 +91,7 @@ impl Model {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.new_button_pressed = true;
+        self.pressed_button = Some(ButtonId::NewNote);
         cx.notify();
     }
 
@@ -94,7 +101,7 @@ impl Model {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.new_button_pressed = false;
+        self.pressed_button = None;
         let offset = self.notes.len() as f32 * 24.0;
         let note_id = self.next_note_id;
         self.next_note_id += 1;
@@ -112,7 +119,7 @@ impl Model {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.new_button_pressed = false;
+        self.pressed_button = None;
         cx.notify();
     }
 
@@ -241,10 +248,12 @@ impl Model {
         }
     }
 
-    fn handled_note_event(&mut self, event: &note::Event, cx: &mut Context<Self>) {
-        match event {
-            note::Event::PressedHeader { note_index, x, y } => {
-                let ni = *note_index;
+    fn handled_note_event(&mut self, indexed_event: &note::IndexedEvent, cx: &mut Context<Self>) {
+        let note_index = indexed_event.note_index;
+
+        match &indexed_event.event {
+            note::Event::PressedHeader { x, y } => {
+                let ni = note_index;
                 if let Some(note) = self.notes.get(ni) {
                     self.active_field = Some(note.body_field_id());
                 }
@@ -256,8 +265,8 @@ impl Model {
                     }));
                 cx.notify();
             }
-            note::Event::PressedResizeHandle { note_index, x, y } => {
-                let ni = *note_index;
+            note::Event::PressedResizeHandle { x, y } => {
+                let ni = note_index;
                 if let Some(note) = self.notes.get(ni) {
                     self.active_field = Some(note.body_field_id());
                 }
@@ -269,20 +278,20 @@ impl Model {
                     }));
                 cx.notify();
             }
-            note::Event::PressedBodyEditor { note_index } => {
-                if let Some(note) = self.notes.get(*note_index) {
+            note::Event::PressedBodyEditor => {
+                if let Some(note) = self.notes.get(note_index) {
                     self.active_field = Some(note.body_field_id());
                 }
                 cx.notify();
             }
-            note::Event::PressedNameEditor { note_index } => {
-                if let Some(note) = self.notes.get(*note_index) {
+            note::Event::PressedNameEditor => {
+                if let Some(note) = self.notes.get(note_index) {
                     self.active_field = Some(note.name_field_id());
                 }
                 cx.notify();
             }
-            note::Event::ClickedRename { note_index } => {
-                let ni = *note_index;
+            note::Event::ClickedRename => {
+                let ni = note_index;
                 if ni >= self.notes.len() {
                     return;
                 }
@@ -293,8 +302,8 @@ impl Model {
                 }
                 cx.notify();
             }
-            note::Event::ClickedSaveName { note_index } => {
-                let ni = *note_index;
+            note::Event::ClickedSaveName => {
+                let ni = note_index;
                 if let Some(note) = self.notes.get_mut(ni) {
                     note.clicked_save_name();
                     if self.active_field == Some(note.name_field_id()) {
@@ -303,15 +312,11 @@ impl Model {
                 }
                 cx.notify();
             }
-            note::Event::PressedCloseButton { note_index } => {
-                self.pressed_close_note_index = Some(*note_index);
-                cx.notify();
-            }
-            note::Event::ClickedCloseButton { note_index } => {
-                let ni = *note_index;
+            note::Event::ClickedCloseButton => {
+                let ni = note_index;
 
                 if let Some(closed_note) = self.notes.get(ni) {
-                    self.pressed_close_note_index = None;
+                    self.pressed_button = None;
                     if self.active_field == Some(closed_note.name_field_id())
                         || self.active_field == Some(closed_note.body_field_id())
                     {
@@ -322,8 +327,15 @@ impl Model {
                     cx.notify();
                 }
             }
-            note::Event::ReleasedCloseButtonOutside => {
-                self.pressed_close_note_index = None;
+            note::Event::PressedButton { button_id } => {
+                self.pressed_button = Some(ButtonId::NoteButtonId {
+                    note_index,
+                    button_id: button_id.clone(),
+                });
+                cx.notify();
+            }
+            note::Event::ReleasedButton => {
+                self.pressed_button = None;
                 cx.notify();
             }
             note::Event::PressedKey(key_press) => {
@@ -369,7 +381,7 @@ impl Model {
     }
 }
 
-impl EventEmitter<note::Event> for Model {}
+impl EventEmitter<note::IndexedEvent> for Model {}
 
 impl Focusable for Model {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -385,6 +397,13 @@ impl Render for Model {
             .iter()
             .enumerate()
             .map(|(index, note)| {
+                let pressed_note_button = match self.pressed_button.as_ref() {
+                    Some(ButtonId::NoteButtonId {
+                        note_index,
+                        button_id,
+                    }) if *note_index == index => Some(button_id),
+                    _ => None,
+                };
                 let show_body_cursor =
                     self.active_field == Some(note.body_field_id()) && is_focused;
                 let show_name_cursor =
@@ -393,7 +412,7 @@ impl Render for Model {
                     index,
                     note,
                     &self.focus_handle,
-                    self.pressed_close_note_index == Some(index),
+                    pressed_note_button,
                     show_body_cursor,
                     show_name_cursor,
                     cx,
@@ -427,7 +446,7 @@ impl Render for Model {
                     )
                     .children(note_windows),
             )
-            .child(toolbar(self.new_button_pressed, cx))
+            .child(toolbar(self.pressed_button == Some(ButtonId::NewNote), cx))
     }
 }
 

@@ -24,17 +24,28 @@ pub enum RenamingState {
     Renaming { name_field: String },
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub enum ButtonId {
+    SaveName,
+    X,
+}
+
 pub enum Event {
-    PressedHeader { note_index: usize, x: f32, y: f32 },
-    PressedResizeHandle { note_index: usize, x: f32, y: f32 },
-    PressedBodyEditor { note_index: usize },
-    PressedNameEditor { note_index: usize },
-    ClickedRename { note_index: usize },
-    ClickedSaveName { note_index: usize },
-    PressedCloseButton { note_index: usize },
-    ClickedCloseButton { note_index: usize },
-    ReleasedCloseButtonOutside,
+    PressedHeader { x: f32, y: f32 },
+    PressedResizeHandle { x: f32, y: f32 },
+    PressedBodyEditor,
+    PressedNameEditor,
+    ClickedRename,
+    ClickedSaveName,
+    ClickedCloseButton,
+    PressedButton { button_id: ButtonId },
+    ReleasedButton,
     PressedKey(KeyPress),
+}
+
+pub struct IndexedEvent {
+    pub note_index: usize,
+    pub event: Event,
 }
 
 pub enum KeyPress {
@@ -159,20 +170,23 @@ pub fn render<T>(
     note_index: usize,
     note: &Note,
     focus_handle: &FocusHandle,
-    close_button_pressed: bool,
+    pressed_button: Option<&ButtonId>,
     show_cursor: bool,
     show_name_cursor: bool,
     cx: &mut Context<T>,
 ) -> gpui::Div
 where
-    T: EventEmitter<Event>,
+    T: EventEmitter<IndexedEvent>,
 {
+    let emitter = IndexedEmitter { note_index };
     let mut lines = note.content.split('\n').collect::<Vec<_>>();
     if lines.is_empty() {
         lines.push("");
     }
     let header_focus_handle = focus_handle.clone();
     let body_focus_handle = focus_handle.clone();
+    let close_button_pressed = pressed_button == Some(&ButtonId::X);
+    let save_button_pressed = pressed_button == Some(&ButtonId::SaveName);
 
     s::raised(
         gpui::div()
@@ -195,56 +209,54 @@ where
                         cx.listener(move |_, event: &MouseDownEvent, window, cx| {
                             window.focus(&header_focus_handle);
                             cx.stop_propagation();
-                            cx.emit(Event::PressedHeader {
-                                note_index,
-                                x: event.position.x.into(),
-                                y: event.position.y.into(),
-                            });
+                            emitter.emit(
+                                cx,
+                                Event::PressedHeader {
+                                    x: event.position.x.into(),
+                                    y: event.position.y.into(),
+                                },
+                            );
                         }),
                     )
                     .child(note.name.clone())
-                    .child(close_button(note_index, close_button_pressed, cx)),
+                    .child(close_button(emitter, close_button_pressed, cx)),
             )
             .child(rename_row(
-                note_index,
+                emitter,
                 note,
                 focus_handle,
                 show_name_cursor,
                 cx,
             ))
             .child(
-                gpui::div()
-                    .p(s::S3)
-                    .pt(s::S0)
-                    .size_full()
-                    .bg(s::GRAY2)
-                    .child(
-                        s::sunken(
-                            gpui::div()
-                                .flex()
-                                .flex_col()
-                                .size_full()
-                                .p(s::S3)
-                                .bg(s::GREEN2)
-                                .track_focus(focus_handle)
-                                .key_context("NoteEditor")
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    cx.listener(move |_, _: &MouseDownEvent, window, cx| {
-                                        window.focus(&body_focus_handle);
-                                        cx.emit(Event::PressedBodyEditor { note_index });
-                                    }),
-                                )
-                                .on_key_down(cx.listener(|_, event, _, cx| {
-                                    emitted_key_event(event, cx);
-                                }))
-                                .children(render_lines(lines, show_cursor)),
-                        )
-                        .size_full(),
-                    ),
-            ),
+                gpui::div().p(s::S3).pt(s::S0).flex_1().bg(s::GRAY2).child(
+                    s::sunken(
+                        gpui::div()
+                            .flex()
+                            .flex_col()
+                            .size_full()
+                            .p(s::S3)
+                            .bg(s::GREEN2)
+                            .track_focus(focus_handle)
+                            .key_context("NoteEditor")
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |_, _: &MouseDownEvent, window, cx| {
+                                    window.focus(&body_focus_handle);
+                                    emitter.emit(cx, Event::PressedBodyEditor);
+                                }),
+                            )
+                            .on_key_down(cx.listener(move |_, event, _, cx| {
+                                emitted_key_event(emitter, event, cx);
+                            }))
+                            .children(render_lines(lines, show_cursor)),
+                    )
+                    .size_full(),
+                ),
+            )
+            .child(save_row(emitter, save_button_pressed, cx)),
     )
-    .child(resize_handle(note_index, focus_handle, cx))
+    .child(resize_handle(emitter, focus_handle, cx))
     .absolute()
     .left(gpui::px(note.x))
     .top(gpui::px(note.y))
@@ -252,15 +264,66 @@ where
     .h(gpui::px(note.height))
 }
 
-fn rename_row<T>(
+#[derive(Clone, Copy)]
+struct IndexedEmitter {
     note_index: usize,
+}
+
+impl IndexedEmitter {
+    fn emit<T>(self, cx: &mut Context<T>, event: Event)
+    where
+        T: EventEmitter<IndexedEvent>,
+    {
+        cx.emit(IndexedEvent {
+            note_index: self.note_index,
+            event,
+        });
+    }
+}
+
+fn save_row<T>(emitter: IndexedEmitter, pressed: bool, cx: &mut Context<T>) -> impl IntoElement
+where
+    T: EventEmitter<IndexedEvent>,
+{
+    gpui::div().flex().justify_end().p(s::S3).pt(s::S0).child(
+        view::button::from_text("save", pressed)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |_, _: &MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    emitter.emit(
+                        cx,
+                        Event::PressedButton {
+                            button_id: ButtonId::SaveName,
+                        },
+                    );
+                }),
+            )
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(move |_, _: &MouseUpEvent, _, cx| {
+                    cx.stop_propagation();
+                    emitter.emit(cx, Event::ReleasedButton);
+                }),
+            )
+            .on_mouse_up_out(
+                MouseButton::Left,
+                cx.listener(move |_, _: &MouseUpEvent, _, cx| {
+                    emitter.emit(cx, Event::ReleasedButton);
+                }),
+            ),
+    )
+}
+
+fn rename_row<T>(
+    emitter: IndexedEmitter,
     note: &Note,
     focus_handle: &FocusHandle,
     show_name_cursor: bool,
     cx: &mut Context<T>,
 ) -> impl IntoElement
 where
-    T: EventEmitter<Event>,
+    T: EventEmitter<IndexedEvent>,
 {
     let name_focus_handle = focus_handle.clone();
     let rename_button_focus_handle = focus_handle.clone();
@@ -292,11 +355,11 @@ where
                                 cx.listener(move |_, _: &MouseDownEvent, window, cx| {
                                     window.focus(&name_focus_handle);
                                     cx.stop_propagation();
-                                    cx.emit(Event::PressedNameEditor { note_index });
+                                    emitter.emit(cx, Event::PressedNameEditor);
                                 }),
                             )
-                            .on_key_down(cx.listener(|_, event, _, cx| {
-                                emitted_key_event(event, cx);
+                            .on_key_down(cx.listener(move |_, event, _, cx| {
+                                emitted_key_event(emitter, event, cx);
                             }))
                             .child(name_field_with_cursor),
                     )
@@ -306,7 +369,7 @@ where
                     MouseButton::Left,
                     cx.listener(move |_, _: &MouseUpEvent, _, cx| {
                         cx.stop_propagation();
-                        cx.emit(Event::ClickedSaveName { note_index });
+                        emitter.emit(cx, Event::ClickedSaveName);
                     }),
                 ))
         }
@@ -316,7 +379,7 @@ where
                 cx.listener(move |_, _: &MouseUpEvent, window, cx| {
                     window.focus(&rename_button_focus_handle);
                     cx.stop_propagation();
-                    cx.emit(Event::ClickedRename { note_index });
+                    emitter.emit(cx, Event::ClickedRename);
                 }),
             ),
         ),
@@ -330,40 +393,45 @@ where
         .child(rename_control)
 }
 
-fn close_button<T>(note_index: usize, pressed: bool, cx: &mut Context<T>) -> gpui::Div
+fn close_button<T>(emitter: IndexedEmitter, pressed: bool, cx: &mut Context<T>) -> gpui::Div
 where
-    T: EventEmitter<Event>,
+    T: EventEmitter<IndexedEvent>,
 {
     view::button::x(pressed)
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(move |_, _: &MouseDownEvent, _, cx| {
                 cx.stop_propagation();
-                cx.emit(Event::PressedCloseButton { note_index });
+                emitter.emit(
+                    cx,
+                    Event::PressedButton {
+                        button_id: ButtonId::X,
+                    },
+                );
             }),
         )
         .on_mouse_up(
             MouseButton::Left,
             cx.listener(move |_, _: &MouseUpEvent, _, cx| {
                 cx.stop_propagation();
-                cx.emit(Event::ClickedCloseButton { note_index });
+                emitter.emit(cx, Event::ClickedCloseButton);
             }),
         )
         .on_mouse_up_out(
             MouseButton::Left,
-            cx.listener(|_, _: &MouseUpEvent, _, cx| {
-                cx.emit(Event::ReleasedCloseButtonOutside);
+            cx.listener(move |_, _: &MouseUpEvent, _, cx| {
+                emitter.emit(cx, Event::ReleasedButton);
             }),
         )
 }
 
 fn resize_handle<T>(
-    note_index: usize,
+    emitter: IndexedEmitter,
     focus_handle: &FocusHandle,
     cx: &mut Context<T>,
 ) -> impl IntoElement
 where
-    T: EventEmitter<Event>,
+    T: EventEmitter<IndexedEvent>,
 {
     let focus_handle = focus_handle.clone();
     gpui::div()
@@ -392,18 +460,20 @@ where
             cx.listener(move |_, event: &MouseDownEvent, window, cx| {
                 window.focus(&focus_handle);
                 cx.stop_propagation();
-                cx.emit(Event::PressedResizeHandle {
-                    note_index,
-                    x: event.position.x.into(),
-                    y: event.position.y.into(),
-                });
+                emitter.emit(
+                    cx,
+                    Event::PressedResizeHandle {
+                        x: event.position.x.into(),
+                        y: event.position.y.into(),
+                    },
+                );
             }),
         )
 }
 
-fn emitted_key_event<T>(event: &KeyDownEvent, cx: &mut Context<T>)
+fn emitted_key_event<T>(emitter: IndexedEmitter, event: &KeyDownEvent, cx: &mut Context<T>)
 where
-    T: EventEmitter<Event>,
+    T: EventEmitter<IndexedEvent>,
 {
     let key_press = match event.keystroke.key.as_str() {
         "backspace" if event.keystroke.modifiers.platform => KeyPress::CommandBackspace,
@@ -423,9 +493,8 @@ where
     };
 
     cx.stop_propagation();
-    cx.emit(Event::PressedKey(key_press));
+    emitter.emit(cx, Event::PressedKey(key_press));
 }
-
 fn render_lines(lines: Vec<&str>, is_focused: bool) -> Vec<impl IntoElement> {
     let last_index = lines.len().saturating_sub(1);
 
