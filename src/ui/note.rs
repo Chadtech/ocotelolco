@@ -39,6 +39,7 @@ pub enum Event {
 
 pub enum KeyPress {
     Backspace,
+    OptionBackspace,
     Enter,
     Text(String),
 }
@@ -84,11 +85,50 @@ impl Note {
         }
     }
 
+    pub fn pressed_name_option_backspace(&mut self) {
+        if let RenamingState::Renaming { name_field } = &mut self.renaming {
+            delete_previous_word(name_field);
+        }
+    }
+
+    pub fn pressed_body_backspace(&mut self) {
+        self.content.pop();
+    }
+
+    pub fn pressed_body_option_backspace(&mut self) {
+        delete_previous_word(&mut self.content);
+    }
+
     pub fn pressed_name_key(&mut self, key_char: &str) {
         if let RenamingState::Renaming { name_field } = &mut self.renaming {
             name_field.push_str(key_char);
         }
     }
+}
+
+fn delete_previous_word(text: &mut String) {
+    if text.is_empty() {
+        return;
+    }
+
+    let mut after_trailing_whitespace = text.len();
+    for (index, character) in text.char_indices().rev() {
+        if character.is_whitespace() {
+            after_trailing_whitespace = index;
+        } else {
+            break;
+        }
+    }
+    text.truncate(after_trailing_whitespace);
+
+    let mut before_word = 0;
+    for (index, character) in text.char_indices().rev() {
+        if character.is_whitespace() {
+            before_word = index + character.len_utf8();
+            break;
+        }
+    }
+    text.truncate(before_word);
 }
 
 pub fn render<T>(
@@ -346,6 +386,7 @@ where
     }
 
     let key_press = match event.keystroke.key.as_str() {
+        "backspace" if event.keystroke.modifiers.alt => KeyPress::OptionBackspace,
         "backspace" => KeyPress::Backspace,
         "enter" => KeyPress::Enter,
         _ => {

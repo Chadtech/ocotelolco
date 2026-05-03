@@ -207,6 +207,12 @@ impl Model {
                 }
                 cx.notify();
             }
+            note::KeyPress::OptionBackspace => {
+                if let Some(note) = self.notes.get_mut(active_field.note_index) {
+                    note.pressed_name_option_backspace();
+                }
+                cx.notify();
+            }
             note::KeyPress::Enter => {
                 let body_field_id = if let Some(note) = self.notes.get_mut(active_field.note_index)
                 {
@@ -332,7 +338,11 @@ impl Model {
 
                 match key_press {
                     note::KeyPress::Backspace => {
-                        note.content.pop();
+                        note.pressed_body_backspace();
+                        cx.notify();
+                    }
+                    note::KeyPress::OptionBackspace => {
+                        note.pressed_body_option_backspace();
                         cx.notify();
                     }
                     note::KeyPress::Enter => {
