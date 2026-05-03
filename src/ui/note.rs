@@ -40,6 +40,7 @@ pub enum Event {
 pub enum KeyPress {
     Backspace,
     OptionBackspace,
+    CommandBackspace,
     Enter,
     Text(String),
 }
@@ -91,12 +92,22 @@ impl Note {
         }
     }
 
+    pub fn pressed_name_command_backspace(&mut self) {
+        if let RenamingState::Renaming { name_field } = &mut self.renaming {
+            delete_current_line(name_field);
+        }
+    }
+
     pub fn pressed_body_backspace(&mut self) {
         self.content.pop();
     }
 
     pub fn pressed_body_option_backspace(&mut self) {
         delete_previous_word(&mut self.content);
+    }
+
+    pub fn pressed_body_command_backspace(&mut self) {
+        delete_current_line(&mut self.content);
     }
 
     pub fn pressed_name_key(&mut self, key_char: &str) {
@@ -129,6 +140,19 @@ fn delete_previous_word(text: &mut String) {
         }
     }
     text.truncate(before_word);
+}
+
+fn delete_current_line(text: &mut String) {
+    if let Some(text_before_empty_line) = text.strip_suffix('\n') {
+        let previous_line_start = text_before_empty_line
+            .rfind('\n')
+            .map_or(0, |index| index + '\n'.len_utf8());
+        text.truncate(previous_line_start);
+        return;
+    }
+
+    let line_start = text.rfind('\n').map_or(0, |index| index + '\n'.len_utf8());
+    text.truncate(line_start);
 }
 
 pub fn render<T>(
@@ -381,15 +405,16 @@ fn emitted_key_event<T>(event: &KeyDownEvent, cx: &mut Context<T>)
 where
     T: EventEmitter<Event>,
 {
-    if event.keystroke.modifiers.platform || event.keystroke.modifiers.control {
-        return;
-    }
-
     let key_press = match event.keystroke.key.as_str() {
+        "backspace" if event.keystroke.modifiers.platform => KeyPress::CommandBackspace,
         "backspace" if event.keystroke.modifiers.alt => KeyPress::OptionBackspace,
         "backspace" => KeyPress::Backspace,
         "enter" => KeyPress::Enter,
         _ => {
+            if event.keystroke.modifiers.platform || event.keystroke.modifiers.control {
+                return;
+            }
+
             let Some(key_char) = event.keystroke.key_char.as_ref() else {
                 return;
             };
