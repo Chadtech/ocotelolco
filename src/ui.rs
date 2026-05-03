@@ -2,6 +2,7 @@ use gpui::{
     prelude::*, App, Application, Context, EventEmitter, FocusHandle, Focusable, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Render, Window, WindowOptions,
 };
+use std::collections::HashMap;
 
 pub mod field;
 mod note;
@@ -10,7 +11,7 @@ pub mod view;
 
 use crate::ui::field::FieldId;
 use crate::ui::style as s;
-use note::Note;
+use note::{Note, NoteId};
 
 pub fn run() {
     Application::new().run(|cx: &mut App| {
@@ -24,9 +25,10 @@ pub fn run() {
 
                     Model {
                         focus_handle,
-                        notes: Vec::new(),
+                        notes: HashMap::new(),
+                        note_order: Vec::new(),
                         active_field: None,
-                        next_note_id: 1,
+                        next_note_id: NoteId(1),
                         pointer_interaction: None,
                         pressed_button: None,
                     }
@@ -45,9 +47,10 @@ pub fn run() {
 
 pub(super) struct Model {
     focus_handle: FocusHandle,
-    notes: Vec<Note>,
+    notes: HashMap<NoteId, Note>,
+    note_order: Vec<NoteId>,
     active_field: Option<FieldId>,
-    next_note_id: u64,
+    next_note_id: NoteId,
     pointer_interaction: Option<PointerInteraction>,
     pressed_button: Option<ButtonId>,
 }
@@ -56,7 +59,7 @@ pub(super) struct Model {
 enum ButtonId {
     NewNote,
     NoteButtonId {
-        note_index: usize,
+        note_id: NoteId,
         button_id: note::ButtonId,
     },
 }
@@ -67,14 +70,14 @@ enum PointerInteraction {
 }
 
 struct PointerInteractionState {
-    note_index: usize,
+    note_id: NoteId,
     last_x: f32,
     last_y: f32,
 }
 
 #[derive(Clone, Copy)]
 struct ActiveField {
-    note_index: usize,
+    note_id: NoteId,
     kind: FieldKind,
 }
 
@@ -102,12 +105,15 @@ impl Model {
         cx: &mut Context<Self>,
     ) {
         self.pressed_button = None;
-        let offset = self.notes.len() as f32 * 24.0;
+        let offset = self.note_order.len() as f32 * 24.0;
         let note_id = self.next_note_id;
-        self.next_note_id += 1;
-        let body_field_id = FieldId(format!("note-{note_id}/body"));
-        self.notes
-            .push(Note::new(note_id, self.notes.len() + 1, offset));
+        self.next_note_id = NoteId(self.next_note_id.0 + 1);
+        let body_field_id = FieldId(format!("note-{}/body", note_id.0));
+        self.notes.insert(
+            note_id,
+            Note::new(note_id, self.note_order.len() + 1, offset),
+        );
+        self.note_order.push(note_id);
         self.active_field = Some(body_field_id);
         window.focus(&self.focus_handle);
         cx.notify();
@@ -125,34 +131,55 @@ impl Model {
 
     fn active_field(&self) -> Option<ActiveField> {
         let active_field_id = self.active_field.as_ref()?;
-        self.notes
-            .iter()
-            .enumerate()
-            .find_map(|(note_index, note)| {
-                if &note.body_field_id() == active_field_id {
-                    Some(ActiveField {
-                        note_index,
-                        kind: FieldKind::Body,
-                    })
-                } else if &note.name_field_id() == active_field_id {
-                    Some(ActiveField {
-                        note_index,
-                        kind: FieldKind::Name,
-                    })
-                } else {
-                    None
-                }
-            })
+        self.notes.iter().find_map(|(note_id, note)| {
+            if &note.body_field_id() == active_field_id {
+                Some(ActiveField {
+                    note_id: *note_id,
+                    kind: FieldKind::Body,
+                })
+            } else if &note.name_field_id() == active_field_id {
+                Some(ActiveField {
+                    note_id: *note_id,
+                    kind: FieldKind::Name,
+                })
+            } else {
+                None
+            }
+        })
     }
 
-    fn pointer_note_mut(&mut self, note_index: usize, cx: &mut Context<Self>) -> Option<&mut Note> {
-        if note_index >= self.notes.len() {
+    fn pointer_note_mut(&mut self, note_id: NoteId, cx: &mut Context<Self>) -> Option<&mut Note> {
+        if !self.notes.contains_key(&note_id) {
             self.pointer_interaction = None;
             cx.notify();
             return None;
         }
 
-        self.notes.get_mut(note_index)
+        self.notes.get_mut(&note_id)
+    }
+
+    fn bring_note_to_front(&mut self, note_id: NoteId) -> Option<NoteId> {
+        if !self.notes.contains_key(&note_id) {
+            return None;
+        }
+
+        if let Some(order_index) = self.note_order.iter().position(|id| *id == note_id) {
+            self.note_order.remove(order_index);
+        }
+        self.note_order.push(note_id);
+        Some(note_id)
+    }
+
+    fn activate_note_body(&mut self, note_id: NoteId) -> Option<NoteId> {
+        let front_note_id = self.bring_note_to_front(note_id)?;
+        self.active_field = Some(self.notes.get(&front_note_id)?.body_field_id());
+        Some(front_note_id)
+    }
+
+    fn activate_note_name(&mut self, note_id: NoteId) -> Option<NoteId> {
+        let front_note_id = self.bring_note_to_front(note_id)?;
+        self.active_field = Some(self.notes.get(&front_note_id)?.name_field_id());
+        Some(front_note_id)
     }
 
     fn moved_mouse(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
@@ -173,7 +200,7 @@ impl Model {
                 state.last_x = x;
                 state.last_y = y;
 
-                let Some(note) = self.pointer_note_mut(state.note_index, cx) else {
+                let Some(note) = self.pointer_note_mut(state.note_id, cx) else {
                     return;
                 };
                 note.x += dx;
@@ -185,7 +212,7 @@ impl Model {
                 state.last_x = x;
                 state.last_y = y;
 
-                let Some(note) = self.pointer_note_mut(state.note_index, cx) else {
+                let Some(note) = self.pointer_note_mut(state.note_id, cx) else {
                     return;
                 };
                 note.width = (note.width + dx).max(note::MIN_SIZE);
@@ -209,26 +236,25 @@ impl Model {
 
         match key_press {
             note::KeyPress::Backspace => {
-                if let Some(note) = self.notes.get_mut(active_field.note_index) {
+                if let Some(note) = self.notes.get_mut(&active_field.note_id) {
                     note.pressed_name_backspace();
                 }
                 cx.notify();
             }
             note::KeyPress::OptionBackspace => {
-                if let Some(note) = self.notes.get_mut(active_field.note_index) {
+                if let Some(note) = self.notes.get_mut(&active_field.note_id) {
                     note.pressed_name_option_backspace();
                 }
                 cx.notify();
             }
             note::KeyPress::CommandBackspace => {
-                if let Some(note) = self.notes.get_mut(active_field.note_index) {
+                if let Some(note) = self.notes.get_mut(&active_field.note_id) {
                     note.pressed_name_command_backspace();
                 }
                 cx.notify();
             }
             note::KeyPress::Enter => {
-                let body_field_id = if let Some(note) = self.notes.get_mut(active_field.note_index)
-                {
+                let body_field_id = if let Some(note) = self.notes.get_mut(&active_field.note_id) {
                     note.clicked_save_name();
                     note.body_field_id()
                 } else {
@@ -240,7 +266,7 @@ impl Model {
                 cx.notify();
             }
             note::KeyPress::Text(key_char) => {
-                if let Some(note) = self.notes.get_mut(active_field.note_index) {
+                if let Some(note) = self.notes.get_mut(&active_field.note_id) {
                     note.pressed_name_key(key_char);
                 }
                 cx.notify();
@@ -248,63 +274,58 @@ impl Model {
         }
     }
 
-    fn handled_note_event(&mut self, indexed_event: &note::IndexedEvent, cx: &mut Context<Self>) {
-        let note_index = indexed_event.note_index;
+    fn handled_note_event(&mut self, note_event: &note::IdEvent, cx: &mut Context<Self>) {
+        let note_id = note_event.note_id;
 
-        match &indexed_event.event {
+        match &note_event.event {
             note::Event::PressedHeader { x, y } => {
-                let ni = note_index;
-                if let Some(note) = self.notes.get(ni) {
-                    self.active_field = Some(note.body_field_id());
-                }
+                let Some(front_note_id) = self.activate_note_body(note_id) else {
+                    return;
+                };
                 self.pointer_interaction =
                     Some(PointerInteraction::Drag(PointerInteractionState {
-                        note_index: ni,
+                        note_id: front_note_id,
                         last_x: *x,
                         last_y: *y,
                     }));
                 cx.notify();
             }
             note::Event::PressedResizeHandle { x, y } => {
-                let ni = note_index;
-                if let Some(note) = self.notes.get(ni) {
-                    self.active_field = Some(note.body_field_id());
-                }
+                let Some(front_note_id) = self.activate_note_body(note_id) else {
+                    return;
+                };
                 self.pointer_interaction =
                     Some(PointerInteraction::Resize(PointerInteractionState {
-                        note_index: ni,
+                        note_id: front_note_id,
                         last_x: *x,
                         last_y: *y,
                     }));
                 cx.notify();
             }
             note::Event::PressedBodyEditor => {
-                if let Some(note) = self.notes.get(note_index) {
-                    self.active_field = Some(note.body_field_id());
-                }
+                self.activate_note_body(note_id);
                 cx.notify();
             }
             note::Event::PressedNameEditor => {
-                if let Some(note) = self.notes.get(note_index) {
-                    self.active_field = Some(note.name_field_id());
-                }
+                self.activate_note_name(note_id);
                 cx.notify();
             }
             note::Event::ClickedRename => {
-                let ni = note_index;
-                if ni >= self.notes.len() {
+                let Some(front_note_id) = self.activate_note_name(note_id) else {
                     return;
-                }
+                };
 
-                if let Some(note) = self.notes.get_mut(ni) {
+                if let Some(note) = self.notes.get_mut(&front_note_id) {
                     note.clicked_rename();
                     self.active_field = Some(note.name_field_id());
                 }
                 cx.notify();
             }
             note::Event::ClickedSaveName => {
-                let ni = note_index;
-                if let Some(note) = self.notes.get_mut(ni) {
+                let Some(front_note_id) = self.bring_note_to_front(note_id) else {
+                    return;
+                };
+                if let Some(note) = self.notes.get_mut(&front_note_id) {
                     note.clicked_save_name();
                     if self.active_field == Some(note.name_field_id()) {
                         self.active_field = Some(note.body_field_id());
@@ -313,23 +334,30 @@ impl Model {
                 cx.notify();
             }
             note::Event::ClickedCloseButton => {
-                let ni = note_index;
+                let Some(front_note_id) = self.bring_note_to_front(note_id) else {
+                    return;
+                };
 
-                if let Some(closed_note) = self.notes.get(ni) {
+                if let Some(closed_note) = self.notes.get(&front_note_id) {
                     self.pressed_button = None;
                     if self.active_field == Some(closed_note.name_field_id())
                         || self.active_field == Some(closed_note.body_field_id())
                     {
                         self.active_field = None;
                     }
-                    self.notes.remove(ni);
+                    self.notes.remove(&front_note_id);
+                    self.note_order
+                        .retain(|ordered_note_id| *ordered_note_id != front_note_id);
                     self.pointer_interaction = None;
                     cx.notify();
                 }
             }
             note::Event::PressedButton { button_id } => {
+                let Some(front_note_id) = self.bring_note_to_front(note_id) else {
+                    return;
+                };
                 self.pressed_button = Some(ButtonId::NoteButtonId {
-                    note_index,
+                    note_id: front_note_id,
                     button_id: button_id.clone(),
                 });
                 cx.notify();
@@ -349,7 +377,7 @@ impl Model {
                     return;
                 }
 
-                let Some(note) = self.notes.get_mut(active_field.note_index) else {
+                let Some(note) = self.notes.get_mut(&active_field.note_id) else {
                     self.active_field = None;
                     return;
                 };
@@ -381,7 +409,7 @@ impl Model {
     }
 }
 
-impl EventEmitter<note::IndexedEvent> for Model {}
+impl EventEmitter<note::IdEvent> for Model {}
 
 impl Focusable for Model {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -393,30 +421,29 @@ impl Render for Model {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_focused = self.focus_handle.is_focused(window);
         let note_windows = self
-            .notes
+            .note_order
             .iter()
-            .enumerate()
-            .map(|(index, note)| {
+            .filter_map(|note_id| {
+                let note = self.notes.get(note_id)?;
                 let pressed_note_button = match self.pressed_button.as_ref() {
                     Some(ButtonId::NoteButtonId {
-                        note_index,
+                        note_id: pressed_note_id,
                         button_id,
-                    }) if *note_index == index => Some(button_id),
+                    }) if pressed_note_id == note_id => Some(button_id),
                     _ => None,
                 };
                 let show_body_cursor =
                     self.active_field == Some(note.body_field_id()) && is_focused;
                 let show_name_cursor =
                     self.active_field == Some(note.name_field_id()) && is_focused;
-                note::render(
-                    index,
+                Some(note::render(
                     note,
                     &self.focus_handle,
                     pressed_note_button,
                     show_body_cursor,
                     show_name_cursor,
                     cx,
-                )
+                ))
             })
             .collect::<Vec<_>>();
 

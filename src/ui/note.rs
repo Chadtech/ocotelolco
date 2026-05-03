@@ -8,8 +8,11 @@ use crate::ui::{field::FieldId, style as s, view};
 pub const DEFAULT_SIZE: f32 = 256.0;
 pub const MIN_SIZE: f32 = 128.0;
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NoteId(pub u64);
+
 pub struct Note {
-    pub id: u64,
+    pub id: NoteId,
     pub name: String,
     pub renaming: RenamingState,
     pub content: String,
@@ -43,8 +46,8 @@ pub enum Event {
     PressedKey(KeyPress),
 }
 
-pub struct IndexedEvent {
-    pub note_index: usize,
+pub struct IdEvent {
+    pub note_id: NoteId,
     pub event: Event,
 }
 
@@ -57,7 +60,7 @@ pub enum KeyPress {
 }
 
 impl Note {
-    pub fn new(id: u64, ordinal: usize, offset: f32) -> Self {
+    pub fn new(id: NoteId, ordinal: usize, offset: f32) -> Self {
         Self {
             id,
             name: format!("note {ordinal}"),
@@ -71,11 +74,11 @@ impl Note {
     }
 
     pub fn name_field_id(&self) -> FieldId {
-        FieldId(format!("note-{}/name", self.id))
+        FieldId(format!("note-{}/name", self.id.0))
     }
 
     pub fn body_field_id(&self) -> FieldId {
-        FieldId(format!("note-{}/body", self.id))
+        FieldId(format!("note-{}/body", self.id.0))
     }
 
     pub fn clicked_rename(&mut self) {
@@ -167,7 +170,6 @@ fn delete_current_line(text: &mut String) {
 }
 
 pub fn render<T>(
-    note_index: usize,
     note: &Note,
     focus_handle: &FocusHandle,
     pressed_button: Option<&ButtonId>,
@@ -176,9 +178,9 @@ pub fn render<T>(
     cx: &mut Context<T>,
 ) -> gpui::Div
 where
-    T: EventEmitter<IndexedEvent>,
+    T: EventEmitter<IdEvent>,
 {
-    let emitter = IndexedEmitter { note_index };
+    let emitter = IdEmitter { note_id: note.id };
     let mut lines = note.content.split('\n').collect::<Vec<_>>();
     if lines.is_empty() {
         lines.push("");
@@ -265,25 +267,25 @@ where
 }
 
 #[derive(Clone, Copy)]
-struct IndexedEmitter {
-    note_index: usize,
+struct IdEmitter {
+    note_id: NoteId,
 }
 
-impl IndexedEmitter {
+impl IdEmitter {
     fn emit<T>(self, cx: &mut Context<T>, event: Event)
     where
-        T: EventEmitter<IndexedEvent>,
+        T: EventEmitter<IdEvent>,
     {
-        cx.emit(IndexedEvent {
-            note_index: self.note_index,
+        cx.emit(IdEvent {
+            note_id: self.note_id,
             event,
         });
     }
 }
 
-fn save_row<T>(emitter: IndexedEmitter, pressed: bool, cx: &mut Context<T>) -> impl IntoElement
+fn save_row<T>(emitter: IdEmitter, pressed: bool, cx: &mut Context<T>) -> impl IntoElement
 where
-    T: EventEmitter<IndexedEvent>,
+    T: EventEmitter<IdEvent>,
 {
     gpui::div().flex().justify_end().p(s::S3).pt(s::S0).child(
         view::button::from_text("save", pressed)
@@ -316,14 +318,14 @@ where
 }
 
 fn rename_row<T>(
-    emitter: IndexedEmitter,
+    emitter: IdEmitter,
     note: &Note,
     focus_handle: &FocusHandle,
     show_name_cursor: bool,
     cx: &mut Context<T>,
 ) -> impl IntoElement
 where
-    T: EventEmitter<IndexedEvent>,
+    T: EventEmitter<IdEvent>,
 {
     let name_focus_handle = focus_handle.clone();
     let rename_button_focus_handle = focus_handle.clone();
@@ -393,9 +395,9 @@ where
         .child(rename_control)
 }
 
-fn close_button<T>(emitter: IndexedEmitter, pressed: bool, cx: &mut Context<T>) -> gpui::Div
+fn close_button<T>(emitter: IdEmitter, pressed: bool, cx: &mut Context<T>) -> gpui::Div
 where
-    T: EventEmitter<IndexedEvent>,
+    T: EventEmitter<IdEvent>,
 {
     view::button::x(pressed)
         .on_mouse_down(
@@ -426,12 +428,12 @@ where
 }
 
 fn resize_handle<T>(
-    emitter: IndexedEmitter,
+    emitter: IdEmitter,
     focus_handle: &FocusHandle,
     cx: &mut Context<T>,
 ) -> impl IntoElement
 where
-    T: EventEmitter<IndexedEvent>,
+    T: EventEmitter<IdEvent>,
 {
     let focus_handle = focus_handle.clone();
     gpui::div()
@@ -471,9 +473,9 @@ where
         )
 }
 
-fn emitted_key_event<T>(emitter: IndexedEmitter, event: &KeyDownEvent, cx: &mut Context<T>)
+fn emitted_key_event<T>(emitter: IdEmitter, event: &KeyDownEvent, cx: &mut Context<T>)
 where
-    T: EventEmitter<IndexedEvent>,
+    T: EventEmitter<IdEvent>,
 {
     let key_press = match event.keystroke.key.as_str() {
         "backspace" if event.keystroke.modifiers.platform => KeyPress::CommandBackspace,
