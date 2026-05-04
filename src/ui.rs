@@ -11,7 +11,7 @@ pub mod view;
 
 use crate::ui::field::FieldId;
 use crate::ui::style as s;
-use note::{Note, NoteId};
+use note::NoteId;
 
 pub fn run() {
     Application::new().run(|cx: &mut App| {
@@ -47,7 +47,7 @@ pub fn run() {
 
 pub(super) struct Model {
     focus_handle: FocusHandle,
-    notes: HashMap<NoteId, Note>,
+    notes: HashMap<NoteId, note::Model>,
     note_order: Vec<NoteId>,
     active_field: Option<FieldId>,
     next_note_id: NoteId,
@@ -74,7 +74,7 @@ enum Event {
 }
 
 enum Effect {
-    SaveNote(note::SaveNote),
+    SaveNote(note::SaveRequest),
 }
 
 enum PointerInteraction {
@@ -175,7 +175,7 @@ impl Model {
         let body_field_id = FieldId(format!("note-{}/body", note_id.0));
         self.notes.insert(
             note_id,
-            Note::new(note_id, self.note_order.len() + 1, offset),
+            note::Model::new(note_id, self.note_order.len() + 1, offset),
         );
         self.note_order.push(note_id);
         self.active_field = Some(body_field_id);
@@ -212,7 +212,11 @@ impl Model {
         })
     }
 
-    fn pointer_note_mut(&mut self, note_id: NoteId, cx: &mut Context<Self>) -> Option<&mut Note> {
+    fn pointer_note_mut(
+        &mut self,
+        note_id: NoteId,
+        cx: &mut Context<Self>,
+    ) -> Option<&mut note::Model> {
         if !self.notes.contains_key(&note_id) {
             self.pointer_interaction = None;
             cx.notify();

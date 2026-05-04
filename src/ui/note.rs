@@ -2,7 +2,8 @@ use gpui::{
     prelude::*, Context, EventEmitter, FocusHandle, KeyDownEvent, MouseButton, MouseDownEvent,
     MouseUpEvent,
 };
-use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
+use std::{io, path::PathBuf};
 
 use crate::ui::{field::FieldId, style as s, view};
 
@@ -12,7 +13,7 @@ pub const MIN_SIZE: f32 = 128.0;
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NoteId(pub u64);
 
-pub struct Note {
+pub struct Model {
     pub id: NoteId,
     pub name: String,
     pub renaming: RenamingState,
@@ -23,6 +24,20 @@ pub struct Note {
     pub y: f32,
     pub width: f32,
     pub height: f32,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Storage {
+    pub name: String,
+    pub content: String,
+}
+
+enum InitFlags {
+    New {
+        ordinal: usize,
+    },
+    #[allow(dead_code)]
+    FromStorage(Storage),
 }
 
 enum SaveState {
@@ -64,11 +79,10 @@ pub struct IdEvent {
     pub event: Event,
 }
 
-pub struct SaveNote {
+pub struct SaveRequest {
     pub note_id: NoteId,
     pub generation: u64,
-    pub name: String,
-    pub content: String,
+    storage: Storage,
 }
 
 #[derive(Clone)]
@@ -80,19 +94,44 @@ pub enum KeyPress {
     Text(String),
 }
 
-impl Note {
+impl Model {
     pub fn new(id: NoteId, ordinal: usize, offset: f32) -> Self {
+        Self::initialize(id, offset, InitFlags::New { ordinal })
+    }
+
+    #[allow(dead_code)]
+    pub fn from_storage(id: NoteId, storage: Storage, offset: f32) -> Self {
+        Self::initialize(id, offset, InitFlags::FromStorage(storage))
+    }
+
+    fn initialize(id: NoteId, offset: f32, init_flags: InitFlags) -> Self {
+        let name = match &init_flags {
+            InitFlags::New { ordinal } => format!("note {ordinal}"),
+            InitFlags::FromStorage(storage) => storage.name.clone(),
+        };
+        let content = match init_flags {
+            InitFlags::New { .. } => String::new(),
+            InitFlags::FromStorage(storage) => storage.content,
+        };
+
         Self {
             id,
-            name: format!("note {ordinal}"),
+            name,
             renaming: RenamingState::NotRenaming,
             save_state: SaveState::Idle,
             edit_generation: 0,
-            content: String::new(),
+            content,
             x: 32.0 + offset,
             y: 32.0 + offset,
             width: DEFAULT_SIZE,
             height: DEFAULT_SIZE,
+        }
+    }
+
+    pub fn to_storage(&self) -> Storage {
+        Storage {
+            name: self.name.clone(),
+            content: self.content.clone(),
         }
     }
 
@@ -157,13 +196,12 @@ impl Note {
         }
     }
 
-    pub fn save_note(&mut self) -> SaveNote {
+    pub fn save_note(&mut self) -> SaveRequest {
         self.save_state = SaveState::Saving;
-        SaveNote {
+        SaveRequest {
             note_id: self.id,
             generation: self.edit_generation,
-            name: self.name.clone(),
-            content: self.content.clone(),
+            storage: self.to_storage(),
         }
     }
 
@@ -222,19 +260,50 @@ fn delete_current_line(text: &mut String) {
     text.truncate(line_start);
 }
 
-pub fn save_note_file(save_note: SaveNote) -> std::io::Result<PathBuf> {
+pub fn save_note_file(save_request: SaveRequest) -> io::Result<PathBuf> {
     let notes_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("notes");
     std::fs::create_dir_all(&notes_dir)?;
 
-    let path = notes_dir.join(format!("note-{}.md", save_note.note_id.0));
-    let contents = format!("# {}\n\n{}", save_note.name, save_note.content);
+    let file_slug = note_name_slug(&save_request.storage.name).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "note name must contain at least one letter or number",
+        )
+    })?;
+    let path = notes_dir.join(format!("{file_slug}.json"));
+    let contents = serde_json::to_string_pretty(&save_request.storage).map_err(io::Error::other)?;
     std::fs::write(&path, contents)?;
 
     Ok(path)
 }
 
+fn note_name_slug(note_name: &str) -> Option<String> {
+    let mut slug = String::new();
+    let mut previous_was_separator = false;
+
+    for character in note_name.chars().flat_map(char::to_lowercase) {
+        if character.is_ascii_alphanumeric() {
+            slug.push(character);
+            previous_was_separator = false;
+        } else if !slug.is_empty() && !previous_was_separator {
+            slug.push('-');
+            previous_was_separator = true;
+        }
+    }
+
+    if previous_was_separator {
+        slug.pop();
+    }
+
+    if slug.is_empty() {
+        None
+    } else {
+        Some(slug)
+    }
+}
+
 pub fn render<T>(
-    note: &Note,
+    note: &Model,
     focus_handle: &FocusHandle,
     pressed_button: Option<&ButtonId>,
     show_cursor: bool,
@@ -349,7 +418,7 @@ impl IdEmitter {
 
 fn save_row<T>(
     emitter: IdEmitter,
-    note: &Note,
+    note: &Model,
     pressed: bool,
     cx: &mut Context<T>,
 ) -> impl IntoElement
@@ -409,7 +478,7 @@ where
 
 fn rename_row<T>(
     emitter: IdEmitter,
-    note: &Note,
+    note: &Model,
     focus_handle: &FocusHandle,
     show_name_cursor: bool,
     cx: &mut Context<T>,
