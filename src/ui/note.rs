@@ -2,6 +2,7 @@ use gpui::{
     prelude::*, Context, EventEmitter, FocusHandle, KeyDownEvent, MouseButton, MouseDownEvent,
     MouseUpEvent,
 };
+use std::path::PathBuf;
 
 use crate::ui::{field::FieldId, style as s, view};
 
@@ -15,11 +16,20 @@ pub struct Note {
     pub id: NoteId,
     pub name: String,
     pub renaming: RenamingState,
+    save_state: SaveState,
+    edit_generation: u64,
     pub content: String,
     pub x: f32,
     pub y: f32,
     pub width: f32,
     pub height: f32,
+}
+
+enum SaveState {
+    Idle,
+    Saving,
+    Saved,
+    Failed,
 }
 
 pub enum RenamingState {
@@ -29,10 +39,11 @@ pub enum RenamingState {
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum ButtonId {
-    SaveName,
+    Save,
     X,
 }
 
+#[derive(Clone)]
 pub enum Event {
     PressedHeader { x: f32, y: f32 },
     PressedResizeHandle { x: f32, y: f32 },
@@ -40,17 +51,27 @@ pub enum Event {
     PressedNameEditor,
     ClickedRename,
     ClickedSaveName,
+    ClickedSaveButton,
     ClickedCloseButton,
     PressedButton { button_id: ButtonId },
     ReleasedButton,
     PressedKey(KeyPress),
 }
 
+#[derive(Clone)]
 pub struct IdEvent {
     pub note_id: NoteId,
     pub event: Event,
 }
 
+pub struct SaveNote {
+    pub note_id: NoteId,
+    pub generation: u64,
+    pub name: String,
+    pub content: String,
+}
+
+#[derive(Clone)]
 pub enum KeyPress {
     Backspace,
     OptionBackspace,
@@ -65,6 +86,8 @@ impl Note {
             id,
             name: format!("note {ordinal}"),
             renaming: RenamingState::NotRenaming,
+            save_state: SaveState::Idle,
+            edit_generation: 0,
             content: String::new(),
             x: 32.0 + offset,
             y: 32.0 + offset,
@@ -90,6 +113,7 @@ impl Note {
     pub fn clicked_save_name(&mut self) {
         if let RenamingState::Renaming { name_field } = &self.renaming {
             self.name = name_field.clone();
+            self.started_editing();
         }
         self.renaming = RenamingState::NotRenaming;
     }
@@ -114,20 +138,49 @@ impl Note {
 
     pub fn pressed_body_backspace(&mut self) {
         self.content.pop();
+        self.started_editing();
     }
 
     pub fn pressed_body_option_backspace(&mut self) {
         delete_previous_word(&mut self.content);
+        self.started_editing();
     }
 
     pub fn pressed_body_command_backspace(&mut self) {
         delete_current_line(&mut self.content);
+        self.started_editing();
     }
 
     pub fn pressed_name_key(&mut self, key_char: &str) {
         if let RenamingState::Renaming { name_field } = &mut self.renaming {
             name_field.push_str(key_char);
         }
+    }
+
+    pub fn save_note(&mut self) -> SaveNote {
+        self.save_state = SaveState::Saving;
+        SaveNote {
+            note_id: self.id,
+            generation: self.edit_generation,
+            name: self.name.clone(),
+            content: self.content.clone(),
+        }
+    }
+
+    pub fn finished_saving(&mut self, generation: u64, result: Result<(), String>) {
+        if generation != self.edit_generation {
+            return;
+        }
+
+        self.save_state = match result {
+            Ok(()) => SaveState::Saved,
+            Err(_) => SaveState::Failed,
+        };
+    }
+
+    pub fn started_editing(&mut self) {
+        self.edit_generation += 1;
+        self.save_state = SaveState::Idle;
     }
 }
 
@@ -169,6 +222,17 @@ fn delete_current_line(text: &mut String) {
     text.truncate(line_start);
 }
 
+pub fn save_note_file(save_note: SaveNote) -> std::io::Result<PathBuf> {
+    let notes_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("notes");
+    std::fs::create_dir_all(&notes_dir)?;
+
+    let path = notes_dir.join(format!("note-{}.md", save_note.note_id.0));
+    let contents = format!("# {}\n\n{}", save_note.name, save_note.content);
+    std::fs::write(&path, contents)?;
+
+    Ok(path)
+}
+
 pub fn render<T>(
     note: &Note,
     focus_handle: &FocusHandle,
@@ -188,7 +252,7 @@ where
     let header_focus_handle = focus_handle.clone();
     let body_focus_handle = focus_handle.clone();
     let close_button_pressed = pressed_button == Some(&ButtonId::X);
-    let save_button_pressed = pressed_button == Some(&ButtonId::SaveName);
+    let save_button_pressed = pressed_button == Some(&ButtonId::Save);
 
     s::raised(
         gpui::div()
@@ -256,7 +320,7 @@ where
                     .size_full(),
                 ),
             )
-            .child(save_row(emitter, save_button_pressed, cx)),
+            .child(save_row(emitter, note, save_button_pressed, cx)),
     )
     .child(resize_handle(emitter, focus_handle, cx))
     .absolute()
@@ -283,38 +347,64 @@ impl IdEmitter {
     }
 }
 
-fn save_row<T>(emitter: IdEmitter, pressed: bool, cx: &mut Context<T>) -> impl IntoElement
+fn save_row<T>(
+    emitter: IdEmitter,
+    note: &Note,
+    pressed: bool,
+    cx: &mut Context<T>,
+) -> impl IntoElement
 where
     T: EventEmitter<IdEvent>,
 {
-    gpui::div().flex().justify_end().p(s::S3).pt(s::S0).child(
-        view::button::from_text("save", pressed)
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |_, _: &MouseDownEvent, _, cx| {
-                    cx.stop_propagation();
-                    emitter.emit(
-                        cx,
-                        Event::PressedButton {
-                            button_id: ButtonId::SaveName,
-                        },
-                    );
-                }),
-            )
-            .on_mouse_up(
-                MouseButton::Left,
-                cx.listener(move |_, _: &MouseUpEvent, _, cx| {
-                    cx.stop_propagation();
-                    emitter.emit(cx, Event::ReleasedButton);
-                }),
-            )
-            .on_mouse_up_out(
-                MouseButton::Left,
-                cx.listener(move |_, _: &MouseUpEvent, _, cx| {
-                    emitter.emit(cx, Event::ReleasedButton);
-                }),
-            ),
-    )
+    let status = match note.save_state {
+        SaveState::Idle => "",
+        SaveState::Saving => "saving...",
+        SaveState::Saved => "saved",
+        SaveState::Failed => "save failed",
+    };
+
+    gpui::div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap_2()
+        .p(s::S3)
+        .pt(s::S0)
+        .child(
+            gpui::div()
+                .flex_1()
+                .min_h(s::S6)
+                .text_color(s::YELLOW3)
+                .child(status),
+        )
+        .child(
+            view::button::from_text("save", pressed)
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |_, _: &MouseDownEvent, _, cx| {
+                        cx.stop_propagation();
+                        emitter.emit(
+                            cx,
+                            Event::PressedButton {
+                                button_id: ButtonId::Save,
+                            },
+                        );
+                    }),
+                )
+                .on_mouse_up(
+                    MouseButton::Left,
+                    cx.listener(move |_, _: &MouseUpEvent, _, cx| {
+                        cx.stop_propagation();
+                        emitter.emit(cx, Event::ClickedSaveButton);
+                    }),
+                )
+                .on_mouse_up_out(
+                    MouseButton::Left,
+                    cx.listener(move |_, _: &MouseUpEvent, _, cx| {
+                        emitter.emit(cx, Event::ReleasedButton);
+                    }),
+                ),
+        )
 }
 
 fn rename_row<T>(

@@ -2,7 +2,7 @@ use gpui::{
     prelude::*, App, Application, Context, EventEmitter, FocusHandle, Focusable, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Render, Window, WindowOptions,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 pub mod field;
 mod note;
@@ -64,6 +64,19 @@ enum ButtonId {
     },
 }
 
+enum Event {
+    Note(note::IdEvent),
+    SavedNote {
+        note_id: NoteId,
+        generation: u64,
+        result: Result<PathBuf, String>,
+    },
+}
+
+enum Effect {
+    SaveNote(note::SaveNote),
+}
+
 enum PointerInteraction {
     Drag(PointerInteractionState),
     Resize(PointerInteractionState),
@@ -88,6 +101,57 @@ enum FieldKind {
 }
 
 impl Model {
+    fn handled_event(&mut self, event: Event, cx: &mut Context<Self>) {
+        match event {
+            Event::Note(note_event) => {
+                self.update_note(note_event, cx);
+            }
+            Event::SavedNote {
+                note_id,
+                generation,
+                result,
+            } => {
+                let Some(note) = self.notes.get_mut(&note_id) else {
+                    cx.notify();
+                    return;
+                };
+
+                let save_result = match result {
+                    Ok(_) => Ok(()),
+                    Err(error) => {
+                        eprintln!("failed to save note {}: {error}", note_id.0);
+                        Err(error)
+                    }
+                };
+                note.finished_saving(generation, save_result);
+                cx.notify();
+            }
+        }
+    }
+
+    fn dispatch_effect(&mut self, effect: Effect, cx: &mut Context<Self>) {
+        match effect {
+            Effect::SaveNote(save_note) => {
+                cx.spawn(async move |model, cx| {
+                    let note_id = save_note.note_id;
+                    let generation = save_note.generation;
+                    let result = note::save_note_file(save_note).map_err(|error| error.to_string());
+                    let _ = model.update(cx, |model, cx| {
+                        model.handled_event(
+                            Event::SavedNote {
+                                note_id,
+                                generation,
+                                result,
+                            },
+                            cx,
+                        );
+                    });
+                })
+                .detach();
+            }
+        }
+    }
+
     fn pressed_new_note_button(
         &mut self,
         _: &MouseDownEvent,
@@ -275,6 +339,10 @@ impl Model {
     }
 
     fn handled_note_event(&mut self, note_event: &note::IdEvent, cx: &mut Context<Self>) {
+        self.handled_event(Event::Note(note_event.clone()), cx);
+    }
+
+    fn update_note(&mut self, note_event: note::IdEvent, cx: &mut Context<Self>) {
         let note_id = note_event.note_id;
 
         match &note_event.event {
@@ -331,6 +399,18 @@ impl Model {
                         self.active_field = Some(note.body_field_id());
                     }
                 }
+                cx.notify();
+            }
+            note::Event::ClickedSaveButton => {
+                self.pressed_button = None;
+                let Some(front_note_id) = self.bring_note_to_front(note_id) else {
+                    return;
+                };
+                let Some(note) = self.notes.get_mut(&front_note_id) else {
+                    return;
+                };
+                let save_note = note.save_note();
+                self.dispatch_effect(Effect::SaveNote(save_note), cx);
                 cx.notify();
             }
             note::Event::ClickedCloseButton => {
@@ -397,10 +477,12 @@ impl Model {
                     }
                     note::KeyPress::Enter => {
                         note.content.push('\n');
+                        note.started_editing();
                         cx.notify();
                     }
                     note::KeyPress::Text(key_char) => {
                         note.content.push_str(key_char);
+                        note.started_editing();
                         cx.notify();
                     }
                 }
