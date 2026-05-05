@@ -7,9 +7,6 @@ use std::{io, path::PathBuf};
 
 use crate::ui::{field::FieldId, style as s, view};
 
-pub const DEFAULT_SIZE: f32 = 256.0;
-pub const MIN_SIZE: f32 = 128.0;
-
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NoteId(pub u64);
 
@@ -20,10 +17,6 @@ pub struct Model {
     save_state: SaveState,
     edit_generation: u64,
     pub content: String,
-    pub x: f32,
-    pub y: f32,
-    pub width: f32,
-    pub height: f32,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -95,16 +88,16 @@ pub enum KeyPress {
 }
 
 impl Model {
-    pub fn new(id: NoteId, ordinal: usize, offset: f32) -> Self {
-        Self::initialize(id, offset, InitFlags::New { ordinal })
+    pub fn new(id: NoteId, ordinal: usize) -> Self {
+        Self::initialize(id, InitFlags::New { ordinal })
     }
 
     #[allow(dead_code)]
-    pub fn from_storage(id: NoteId, storage: Storage, offset: f32) -> Self {
-        Self::initialize(id, offset, InitFlags::FromStorage(storage))
+    pub fn from_storage(id: NoteId, storage: Storage) -> Self {
+        Self::initialize(id, InitFlags::FromStorage(storage))
     }
 
-    fn initialize(id: NoteId, offset: f32, init_flags: InitFlags) -> Self {
+    fn initialize(id: NoteId, init_flags: InitFlags) -> Self {
         let name = match &init_flags {
             InitFlags::New { ordinal } => format!("note {ordinal}"),
             InitFlags::FromStorage(storage) => storage.name.clone(),
@@ -121,10 +114,6 @@ impl Model {
             save_state: SaveState::Idle,
             edit_generation: 0,
             content,
-            x: 32.0 + offset,
-            y: 32.0 + offset,
-            width: DEFAULT_SIZE,
-            height: DEFAULT_SIZE,
         }
     }
 
@@ -306,14 +295,16 @@ pub fn render<T>(
     note: &Model,
     focus_handle: &FocusHandle,
     pressed_button: Option<&ButtonId>,
-    show_cursor: bool,
-    show_name_cursor: bool,
+    active_field: Option<&FieldId>,
+    is_focused: bool,
     cx: &mut Context<T>,
 ) -> gpui::Div
 where
     T: EventEmitter<IdEvent>,
 {
     let emitter = IdEmitter { note_id: note.id };
+    let show_body_cursor = active_field == Some(&note.body_field_id()) && is_focused;
+    let show_name_cursor = active_field == Some(&note.name_field_id()) && is_focused;
     let mut lines = note.content.split('\n').collect::<Vec<_>>();
     if lines.is_empty() {
         lines.push("");
@@ -384,7 +375,7 @@ where
                             .on_key_down(cx.listener(move |_, event, _, cx| {
                                 emitted_key_event(emitter, event, cx);
                             }))
-                            .children(render_lines(lines, show_cursor)),
+                            .children(render_lines(lines, show_body_cursor)),
                     )
                     .size_full(),
                 ),
@@ -392,11 +383,6 @@ where
             .child(save_row(emitter, note, save_button_pressed, cx)),
     )
     .child(resize_handle(emitter, focus_handle, cx))
-    .absolute()
-    .left(gpui::px(note.x))
-    .top(gpui::px(note.y))
-    .w(gpui::px(note.width))
-    .h(gpui::px(note.height))
 }
 
 #[derive(Clone, Copy)]
