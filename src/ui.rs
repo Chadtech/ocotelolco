@@ -1,8 +1,13 @@
 use gpui::{
     prelude::*, App, Application, Context, EventEmitter, FocusHandle, Focusable, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Render, WindowOptions,
+    MouseMoveEvent, Render, WindowOptions,
 };
-use std::{collections::HashMap, path::PathBuf};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    io,
+    path::{Path, PathBuf},
+};
 
 pub mod field;
 mod note;
@@ -26,15 +31,12 @@ pub fn run() {
                 cx.new(|cx| {
                     cx.subscribe_self(Model::handled_note_event).detach();
 
-                    Model {
+                    let mut model = Model {
                         focus_handle,
-                        windows: HashMap::new(),
-                        window_order: Vec::new(),
-                        active_field: None,
-                        next_note_id: NoteId(1),
-                        pointer_interaction: None,
-                        pressed_button: None,
-                    }
+                        state: LoadingState::Loading,
+                    };
+                    model.load(cx);
+                    model
                 })
             })
             .expect("failed to open notes window");
@@ -48,14 +50,42 @@ pub fn run() {
     });
 }
 
-pub(super) struct Model {
+struct Model {
     focus_handle: FocusHandle,
+    state: LoadingState,
+}
+
+enum LoadingState {
+    Loading,
+    Loaded(LoadedState),
+}
+
+struct LoadedState {
     windows: HashMap<WindowId, Window>,
     window_order: Vec<WindowId>,
     active_field: Option<FieldId>,
     next_note_id: NoteId,
     pointer_interaction: Option<PointerInteraction>,
     pressed_button: Option<ButtonId>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct Storage {
+    windows: Vec<StorageWindow>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct StorageWindow {
+    x: f32,
+    y: f32,
+    height: f32,
+    width: f32,
+    content: StorageWindowContent,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+enum StorageWindowContent {
+    Note(note::StorageState),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -83,6 +113,30 @@ impl Window {
             height: DEFAULT_WINDOW_SIZE,
             width: DEFAULT_WINDOW_SIZE,
             content: WindowContent::Note(note::Model::new(window_id.note_id(), ordinal)),
+        }
+    }
+
+    fn from_storage(storage: StorageWindow, content: WindowContent) -> Self {
+        Self {
+            x: storage.x,
+            y: storage.y,
+            height: storage.height.max(MIN_WINDOW_SIZE),
+            width: storage.width.max(MIN_WINDOW_SIZE),
+            content,
+        }
+    }
+
+    fn to_storage(&self) -> StorageWindow {
+        let content = match &self.content {
+            WindowContent::Note(note) => StorageWindowContent::Note(note.to_storage_state()),
+        };
+
+        StorageWindow {
+            x: self.x,
+            y: self.y,
+            height: self.height,
+            width: self.width,
+            content,
         }
     }
 
@@ -122,17 +176,17 @@ enum ButtonId {
     },
 }
 
-enum Event {
-    Note(note::IdEvent),
-    SavedNote {
-        note_id: NoteId,
-        generation: u64,
-        result: Result<PathBuf, String>,
-    },
-}
-
 enum Effect {
     SaveNote(note::SaveRequest),
+}
+
+enum Event<'a> {
+    Note(note::IdEvent),
+    PressedNewNoteButton,
+    ClickedNewNoteButton,
+    ReleasedNewNoteButtonOutside,
+    MovedMouse(&'a MouseMoveEvent),
+    ReleasedMouse,
 }
 
 enum PointerInteraction {
@@ -159,39 +213,132 @@ enum FieldKind {
 }
 
 impl Model {
-    fn handled_event(&mut self, event: Event, cx: &mut Context<Self>) {
-        match event {
-            Event::Note(note_event) => {
-                self.update_note(note_event, cx);
+    fn load(&mut self, cx: &mut Context<Model>) {
+        let storage = match load_storage_file() {
+            Ok(storage) => Some(storage),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => {
+                eprintln!("failed to load ui storage: {error}");
+                None
             }
-            Event::SavedNote {
-                note_id,
-                generation,
-                result,
-            } => {
-                let Some(note) = self
-                    .windows
-                    .get_mut(&WindowId::from(note_id))
-                    .map(Window::note_mut)
-                else {
-                    cx.notify();
-                    return;
-                };
+        };
 
-                let save_result = match result {
-                    Ok(_) => Ok(()),
-                    Err(error) => {
-                        eprintln!("failed to save note {}: {error}", note_id.0);
-                        Err(error)
-                    }
-                };
-                note.finished_saving(generation, save_result);
-                cx.notify();
-            }
+        self.state = LoadingState::Loaded(match storage {
+            Some(storage) => LoadedState::from_storage(storage),
+            None => LoadedState::default(),
+        });
+        cx.notify();
+    }
+
+    fn loaded_mut(&mut self) -> Option<&mut LoadedState> {
+        match &mut self.state {
+            LoadingState::Loaded(state) => Some(state),
+            LoadingState::Loading => None,
         }
     }
 
-    fn dispatch_effect(&mut self, effect: Effect, cx: &mut Context<Self>) {
+    fn handle_event(&mut self, event: Event<'_>, cx: &mut Context<Model>) {
+        let Some(state) = self.loaded_mut() else {
+            return;
+        };
+        state.handle_event(event, cx);
+    }
+
+    fn handled_note_event(&mut self, note_event: &note::IdEvent, cx: &mut Context<Model>) {
+        self.handle_event(Event::Note(note_event.clone()), cx);
+    }
+
+    fn finish_saving_note(
+        &mut self,
+        note_id: NoteId,
+        generation: u64,
+        result: Result<PathBuf, String>,
+        cx: &mut Context<Model>,
+    ) {
+        let Some(state) = self.loaded_mut() else {
+            cx.notify();
+            return;
+        };
+        let Some(note) = state
+            .windows
+            .get_mut(&WindowId::from(note_id))
+            .map(Window::note_mut)
+        else {
+            cx.notify();
+            return;
+        };
+
+        if let Err(error) = &result {
+            eprintln!("failed to save note {}: {error}", note_id.0);
+        }
+        note.finished_saving(generation, result);
+        state.save_storage();
+        cx.notify();
+    }
+}
+
+impl Default for LoadedState {
+    fn default() -> Self {
+        Self {
+            windows: HashMap::new(),
+            window_order: Vec::new(),
+            active_field: None,
+            next_note_id: NoteId(1),
+            pointer_interaction: None,
+            pressed_button: None,
+        }
+    }
+}
+
+impl LoadedState {
+    fn from_storage(storage: Storage) -> Self {
+        let mut state = Self::default();
+
+        for storage_window in storage.windows.into_iter() {
+            let note_id = state.next_note_id;
+            let content = match storage_window.content.clone() {
+                StorageWindowContent::Note(note::StorageState::Saved { path }) => {
+                    let Some(note_storage) = load_storage_window_note(&path) else {
+                        continue;
+                    };
+                    WindowContent::Note(note::Model::from_storage(
+                        note_id,
+                        note_storage,
+                        Some(path),
+                    ))
+                }
+                StorageWindowContent::Note(note::StorageState::Unsaved(note_storage)) => {
+                    WindowContent::Note(note::Model::from_storage(note_id, note_storage, None))
+                }
+            };
+            state.next_note_id = NoteId(state.next_note_id.0 + 1);
+            let window_id = WindowId::from(note_id);
+            state.window_order.push(window_id);
+            state
+                .windows
+                .insert(window_id, Window::from_storage(storage_window, content));
+        }
+
+        state
+    }
+
+    fn to_storage(&self) -> Storage {
+        let windows = self
+            .window_order
+            .iter()
+            .filter_map(|window_id| self.windows.get(window_id).map(Window::to_storage))
+            .collect();
+
+        Storage { windows }
+    }
+
+    fn save_storage(&self) {
+        if let Err(error) = save_storage_file(&self.to_storage()) {
+            eprintln!("failed to save ui storage: {error}");
+        }
+    }
+
+    fn dispatch_effect(&mut self, effect: Effect, cx: &mut Context<Model>) {
         match effect {
             Effect::SaveNote(save_note) => {
                 cx.spawn(async move |model, cx| {
@@ -199,14 +346,7 @@ impl Model {
                     let generation = save_note.generation;
                     let result = note::save_note_file(save_note).map_err(|error| error.to_string());
                     let _ = model.update(cx, |model, cx| {
-                        model.handled_event(
-                            Event::SavedNote {
-                                note_id,
-                                generation,
-                                result,
-                            },
-                            cx,
-                        );
+                        model.finish_saving_note(note_id, generation, result, cx);
                     });
                 })
                 .detach();
@@ -214,46 +354,82 @@ impl Model {
         }
     }
 
-    fn pressed_new_note_button(
-        &mut self,
-        _: &MouseDownEvent,
-        _: &mut gpui::Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.pressed_button = Some(ButtonId::NewNote);
-        cx.notify();
-    }
+    fn handle_event(&mut self, event: Event<'_>, cx: &mut Context<Model>) {
+        match event {
+            Event::Note(note_event) => {
+                self.update_note(note_event, cx);
+            }
+            Event::PressedNewNoteButton => {
+                self.pressed_button = Some(ButtonId::NewNote);
+                cx.notify();
+            }
+            Event::ClickedNewNoteButton => {
+                self.pressed_button = None;
+                let offset = self.window_order.len() as f32 * 24.0;
+                let note_id = self.next_note_id;
+                let window_id = WindowId::Note(note_id);
+                self.next_note_id = NoteId(self.next_note_id.0 + 1);
+                let body_field_id = FieldId(format!("note-{}/body", note_id.0));
+                self.windows.insert(
+                    window_id,
+                    Window::new_note(window_id, self.window_order.len() + 1, offset),
+                );
+                self.window_order.push(window_id);
+                self.active_field = Some(body_field_id);
+                self.save_storage();
+                cx.notify();
+            }
+            Event::ReleasedNewNoteButtonOutside => {
+                self.pressed_button = None;
+                cx.notify();
+            }
+            Event::MovedMouse(event) => {
+                let Some(mut pointer_interaction) = self.pointer_interaction.take() else {
+                    return;
+                };
+                if !event.dragging() {
+                    cx.notify();
+                    return;
+                }
 
-    fn clicked_new_note_button(
-        &mut self,
-        _: &MouseUpEvent,
-        window: &mut gpui::Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.pressed_button = None;
-        let offset = self.window_order.len() as f32 * 24.0;
-        let note_id = self.next_note_id;
-        let window_id = WindowId::Note(note_id);
-        self.next_note_id = NoteId(self.next_note_id.0 + 1);
-        let body_field_id = FieldId(format!("note-{}/body", note_id.0));
-        self.windows.insert(
-            window_id,
-            Window::new_note(window_id, self.window_order.len() + 1, offset),
-        );
-        self.window_order.push(window_id);
-        self.active_field = Some(body_field_id);
-        window.focus(&self.focus_handle);
-        cx.notify();
-    }
+                let x = f32::from(event.position.x);
+                let y = f32::from(event.position.y);
+                match &mut pointer_interaction {
+                    PointerInteraction::Drag(state) => {
+                        let dx = x - state.last_x;
+                        let dy = y - state.last_y;
+                        state.last_x = x;
+                        state.last_y = y;
 
-    fn released_new_note_button_outside(
-        &mut self,
-        _: &MouseUpEvent,
-        _: &mut gpui::Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.pressed_button = None;
-        cx.notify();
+                        let Some(ui_window) = self.pointer_window_mut(state.window_id, cx) else {
+                            return;
+                        };
+                        ui_window.x += dx;
+                        ui_window.y += dy;
+                        self.save_storage();
+                    }
+                    PointerInteraction::Resize(state) => {
+                        let dx = x - state.last_x;
+                        let dy = y - state.last_y;
+                        state.last_x = x;
+                        state.last_y = y;
+
+                        let Some(ui_window) = self.pointer_window_mut(state.window_id, cx) else {
+                            return;
+                        };
+                        ui_window.width = (ui_window.width + dx).max(MIN_WINDOW_SIZE);
+                        ui_window.height = (ui_window.height + dy).max(MIN_WINDOW_SIZE);
+                        self.save_storage();
+                    }
+                }
+                self.pointer_interaction = Some(pointer_interaction);
+                cx.notify();
+            }
+            Event::ReleasedMouse => {
+                self.pointer_interaction = None;
+                cx.notify();
+            }
+        }
     }
 
     fn active_field(&self) -> Option<ActiveField> {
@@ -279,7 +455,7 @@ impl Model {
     fn pointer_window_mut(
         &mut self,
         window_id: WindowId,
-        cx: &mut Context<Self>,
+        cx: &mut Context<Model>,
     ) -> Option<&mut Window> {
         if !self.windows.contains_key(&window_id) {
             self.pointer_interaction = None;
@@ -314,58 +490,7 @@ impl Model {
         Some(front_window_id.note_id())
     }
 
-    fn moved_mouse(
-        &mut self,
-        event: &MouseMoveEvent,
-        _: &mut gpui::Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(mut pointer_interaction) = self.pointer_interaction.take() else {
-            return;
-        };
-        if !event.dragging() {
-            cx.notify();
-            return;
-        }
-
-        let x = f32::from(event.position.x);
-        let y = f32::from(event.position.y);
-        match &mut pointer_interaction {
-            PointerInteraction::Drag(state) => {
-                let dx = x - state.last_x;
-                let dy = y - state.last_y;
-                state.last_x = x;
-                state.last_y = y;
-
-                let Some(ui_window) = self.pointer_window_mut(state.window_id, cx) else {
-                    return;
-                };
-                ui_window.x += dx;
-                ui_window.y += dy;
-            }
-            PointerInteraction::Resize(state) => {
-                let dx = x - state.last_x;
-                let dy = y - state.last_y;
-                state.last_x = x;
-                state.last_y = y;
-
-                let Some(ui_window) = self.pointer_window_mut(state.window_id, cx) else {
-                    return;
-                };
-                ui_window.width = (ui_window.width + dx).max(MIN_WINDOW_SIZE);
-                ui_window.height = (ui_window.height + dy).max(MIN_WINDOW_SIZE);
-            }
-        }
-        self.pointer_interaction = Some(pointer_interaction);
-        cx.notify();
-    }
-
-    fn released_mouse(&mut self, _: &MouseUpEvent, _: &mut gpui::Window, cx: &mut Context<Self>) {
-        self.pointer_interaction = None;
-        cx.notify();
-    }
-
-    fn pressed_name_key(&mut self, key_press: &note::KeyPress, cx: &mut Context<Self>) {
+    fn pressed_name_key(&mut self, key_press: &note::KeyPress, cx: &mut Context<Model>) {
         let Some(active_field) = self.active_field() else {
             self.active_field = None;
             return;
@@ -431,11 +556,7 @@ impl Model {
         }
     }
 
-    fn handled_note_event(&mut self, note_event: &note::IdEvent, cx: &mut Context<Self>) {
-        self.handled_event(Event::Note(note_event.clone()), cx);
-    }
-
-    fn update_note(&mut self, note_event: note::IdEvent, cx: &mut Context<Self>) {
+    fn update_note(&mut self, note_event: note::IdEvent, cx: &mut Context<Model>) {
         let note_id = note_event.note_id;
 
         match &note_event.event {
@@ -556,6 +677,7 @@ impl Model {
 
                 if active_field.kind == FieldKind::Name {
                     self.pressed_name_key(key_press, cx);
+                    self.save_storage();
                     return;
                 }
 
@@ -594,7 +716,34 @@ impl Model {
                 }
             }
         }
+        self.save_storage();
     }
+}
+
+fn storage_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("ui.json")
+}
+
+fn load_storage_file() -> io::Result<Storage> {
+    let contents = std::fs::read_to_string(storage_path())?;
+    serde_json::from_str(&contents).map_err(io::Error::other)
+}
+
+fn load_storage_window_note(note_path: &Path) -> Option<note::Storage> {
+    match note::load_note_file(note_path) {
+        Ok(note) => Some(note),
+        Err(error) => {
+            eprintln!("failed to load note {}: {error}", note_path.display());
+            None
+        }
+    }
+}
+
+fn save_storage_file(storage: &Storage) -> io::Result<PathBuf> {
+    let path = storage_path();
+    let contents = serde_json::to_string_pretty(storage).map_err(io::Error::other)?;
+    std::fs::write(&path, contents)?;
+    Ok(path)
 }
 
 impl EventEmitter<note::IdEvent> for Model {}
@@ -605,9 +754,14 @@ impl Focusable for Model {
     }
 }
 
-impl Render for Model {
-    fn render(&mut self, window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let is_focused = self.focus_handle.is_focused(window);
+impl LoadedState {
+    fn render(
+        &mut self,
+        focus_handle: &FocusHandle,
+        window: &mut gpui::Window,
+        cx: &mut Context<Model>,
+    ) -> gpui::Div {
+        let is_focused = focus_handle.is_focused(window);
         let ui_windows = self
             .window_order
             .iter()
@@ -628,7 +782,7 @@ impl Render for Model {
 
                         note::render(
                             note,
-                            &self.focus_handle,
+                            focus_handle,
                             pressed_note_button,
                             self.active_field.as_ref(),
                             is_focused,
@@ -655,8 +809,15 @@ impl Render for Model {
             .font_family(s::FONT)
             .bg(s::GREEN3)
             .text_color(s::GRAY6)
-            .on_mouse_move(cx.listener(Self::moved_mouse))
-            .on_mouse_up(MouseButton::Left, cx.listener(Self::released_mouse))
+            .on_mouse_move(cx.listener(|model, event, _, cx| {
+                model.handle_event(Event::MovedMouse(event), cx);
+            }))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|model, _event, _, cx| {
+                    model.handle_event(Event::ReleasedMouse, cx);
+                }),
+            )
             .child(
                 gpui::div()
                     .relative()
@@ -678,6 +839,20 @@ impl Render for Model {
     }
 }
 
+impl Render for Model {
+    fn render(&mut self, window: &mut gpui::Window, cx: &mut Context<Model>) -> impl IntoElement {
+        match &mut self.state {
+            LoadingState::Loading => gpui::div()
+                .size_full()
+                .font_family(s::FONT)
+                .bg(s::GREEN3)
+                .text_color(s::GRAY6)
+                .child("loading..."),
+            LoadingState::Loaded(state) => state.render(&self.focus_handle, window, cx),
+        }
+    }
+}
+
 fn toolbar(new_button_pressed: bool, cx: &mut Context<Model>) -> impl IntoElement {
     gpui::div()
         .flex()
@@ -691,15 +866,22 @@ fn toolbar(new_button_pressed: bool, cx: &mut Context<Model>) -> impl IntoElemen
             view::button::from_text("new note", new_button_pressed)
                 .on_mouse_down(
                     MouseButton::Left,
-                    cx.listener(Model::pressed_new_note_button),
+                    cx.listener(|model, _event, _, cx| {
+                        model.handle_event(Event::PressedNewNoteButton, cx);
+                    }),
                 )
                 .on_mouse_up(
                     MouseButton::Left,
-                    cx.listener(Model::clicked_new_note_button),
+                    cx.listener(|model, _event, window, cx| {
+                        window.focus(&model.focus_handle);
+                        model.handle_event(Event::ClickedNewNoteButton, cx);
+                    }),
                 )
                 .on_mouse_up_out(
                     MouseButton::Left,
-                    cx.listener(Model::released_new_note_button_outside),
+                    cx.listener(|model, _event, _, cx| {
+                        model.handle_event(Event::ReleasedNewNoteButtonOutside, cx);
+                    }),
                 ),
         )
 }

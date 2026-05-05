@@ -3,7 +3,10 @@ use gpui::{
     MouseUpEvent,
 };
 use serde::{Deserialize, Serialize};
-use std::{io, path::PathBuf};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 use crate::ui::{field::FieldId, style as s, view};
 
@@ -17,20 +20,29 @@ pub struct Model {
     save_state: SaveState,
     edit_generation: u64,
     pub content: String,
+    path: Option<PathBuf>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct Storage {
     pub name: String,
     pub content: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub enum StorageState {
+    Saved { path: PathBuf },
+    Unsaved(Storage),
 }
 
 enum InitFlags {
     New {
         ordinal: usize,
     },
-    #[allow(dead_code)]
-    FromStorage(Storage),
+    FromStorage {
+        storage: Storage,
+        path: Option<PathBuf>,
+    },
 }
 
 enum SaveState {
@@ -92,19 +104,18 @@ impl Model {
         Self::initialize(id, InitFlags::New { ordinal })
     }
 
-    #[allow(dead_code)]
-    pub fn from_storage(id: NoteId, storage: Storage) -> Self {
-        Self::initialize(id, InitFlags::FromStorage(storage))
+    pub fn from_storage(id: NoteId, storage: Storage, path: Option<PathBuf>) -> Self {
+        Self::initialize(id, InitFlags::FromStorage { storage, path })
     }
 
     fn initialize(id: NoteId, init_flags: InitFlags) -> Self {
         let name = match &init_flags {
             InitFlags::New { ordinal } => format!("note {ordinal}"),
-            InitFlags::FromStorage(storage) => storage.name.clone(),
+            InitFlags::FromStorage { storage, .. } => storage.name.clone(),
         };
-        let content = match init_flags {
-            InitFlags::New { .. } => String::new(),
-            InitFlags::FromStorage(storage) => storage.content,
+        let (content, path) = match init_flags {
+            InitFlags::New { .. } => (String::new(), None),
+            InitFlags::FromStorage { storage, path } => (storage.content, path),
         };
 
         Self {
@@ -114,6 +125,7 @@ impl Model {
             save_state: SaveState::Idle,
             edit_generation: 0,
             content,
+            path,
         }
     }
 
@@ -122,6 +134,19 @@ impl Model {
             name: self.name.clone(),
             content: self.content.clone(),
         }
+    }
+
+    pub fn to_storage_state(&self) -> StorageState {
+        match self.path() {
+            Some(path) => StorageState::Saved {
+                path: PathBuf::from(path),
+            },
+            None => StorageState::Unsaved(self.to_storage()),
+        }
+    }
+
+    pub fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
     }
 
     pub fn name_field_id(&self) -> FieldId {
@@ -194,13 +219,16 @@ impl Model {
         }
     }
 
-    pub fn finished_saving(&mut self, generation: u64, result: Result<(), String>) {
+    pub fn finished_saving(&mut self, generation: u64, result: Result<PathBuf, String>) {
         if generation != self.edit_generation {
             return;
         }
 
         self.save_state = match result {
-            Ok(()) => SaveState::Saved,
+            Ok(path) => {
+                self.path = Some(path);
+                SaveState::Saved
+            }
             Err(_) => SaveState::Failed,
         };
     }
@@ -264,6 +292,11 @@ pub fn save_note_file(save_request: SaveRequest) -> io::Result<PathBuf> {
     std::fs::write(&path, contents)?;
 
     Ok(path)
+}
+
+pub fn load_note_file(path: &Path) -> io::Result<Storage> {
+    let contents = std::fs::read_to_string(path)?;
+    serde_json::from_str(&contents).map_err(io::Error::other)
 }
 
 fn note_name_slug(note_name: &str) -> Option<String> {
