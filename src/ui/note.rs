@@ -96,6 +96,7 @@ pub enum KeyPress {
     OptionBackspace,
     CommandBackspace,
     Enter,
+    Save,
     Text(String),
 }
 
@@ -157,13 +158,13 @@ impl Model {
         FieldId(format!("note-{}/body", self.id.0))
     }
 
-    pub fn clicked_rename(&mut self) {
+    pub fn start_renaming(&mut self) {
         self.renaming = RenamingState::Renaming {
             name_field: self.name.clone(),
         };
     }
 
-    pub fn clicked_save_name(&mut self) {
+    pub fn commit_rename(&mut self) {
         if let RenamingState::Renaming { name_field } = &self.renaming {
             self.name = name_field.clone();
             self.started_editing();
@@ -210,7 +211,7 @@ impl Model {
         }
     }
 
-    pub fn save_note(&mut self) -> SaveRequest {
+    pub fn save(&mut self) -> SaveRequest {
         self.save_state = SaveState::Saving;
         SaveRequest {
             note_id: self.id,
@@ -656,6 +657,7 @@ where
     T: EventEmitter<IdEvent>,
 {
     let key_press = match event.keystroke.key.as_str() {
+        "s" if event.keystroke.modifiers.platform => KeyPress::Save,
         "backspace" if event.keystroke.modifiers.platform => KeyPress::CommandBackspace,
         "backspace" if event.keystroke.modifiers.alt => KeyPress::OptionBackspace,
         "backspace" => KeyPress::Backspace,

@@ -490,12 +490,40 @@ impl LoadedState {
         Some(front_window_id.note_id())
     }
 
-    fn pressed_name_key(&mut self, key_press: &note::KeyPress, cx: &mut Context<Model>) {
-        let Some(active_field) = self.active_field() else {
-            self.active_field = None;
-            return;
+    fn save_note(&mut self, note_id: NoteId, cx: &mut Context<Model>) -> bool {
+        let Some(front_window_id) = self.bring_window_to_front(WindowId::from(note_id)) else {
+            return false;
+        };
+        let Some(note) = self.windows.get_mut(&front_window_id).map(Window::note_mut) else {
+            return false;
         };
 
+        let save_note = note.save();
+        self.dispatch_effect(Effect::SaveNote(save_note), cx);
+        true
+    }
+
+    fn commit_rename_and_focus_body(&mut self, note_id: NoteId) -> bool {
+        let Some(note) = self
+            .windows
+            .get_mut(&WindowId::from(note_id))
+            .map(Window::note_mut)
+        else {
+            self.active_field = None;
+            return false;
+        };
+
+        note.commit_rename();
+        self.active_field = Some(note.body_field_id());
+        true
+    }
+
+    fn pressed_note_name_key(
+        &mut self,
+        active_field: ActiveField,
+        key_press: &note::KeyPress,
+        cx: &mut Context<Model>,
+    ) {
         match key_press {
             note::KeyPress::Backspace => {
                 if let Some(note) = self
@@ -528,19 +556,16 @@ impl LoadedState {
                 cx.notify();
             }
             note::KeyPress::Enter => {
-                let body_field_id = if let Some(note) = self
-                    .windows
-                    .get_mut(&WindowId::from(active_field.note_id))
-                    .map(Window::note_mut)
-                {
-                    note.clicked_save_name();
-                    note.body_field_id()
-                } else {
-                    self.active_field = None;
-                    cx.notify();
+                if !self.commit_rename_and_focus_body(active_field.note_id) {
                     return;
-                };
-                self.active_field = Some(body_field_id);
+                }
+                cx.notify();
+            }
+            note::KeyPress::Save => {
+                if !self.commit_rename_and_focus_body(active_field.note_id) {
+                    return;
+                }
+                self.save_note(active_field.note_id, cx);
                 cx.notify();
             }
             note::KeyPress::Text(key_char) => {
@@ -551,6 +576,55 @@ impl LoadedState {
                 {
                     note.pressed_name_key(key_char);
                 }
+                cx.notify();
+            }
+        }
+    }
+
+    fn pressed_note_body_key(
+        &mut self,
+        active_field: ActiveField,
+        key_press: &note::KeyPress,
+        cx: &mut Context<Model>,
+    ) {
+        let Some(front_window_id) =
+            self.bring_window_to_front(WindowId::from(active_field.note_id))
+        else {
+            self.active_field = None;
+            return;
+        };
+
+        let Some(note) = self.windows.get_mut(&front_window_id).map(Window::note_mut) else {
+            self.active_field = None;
+            return;
+        };
+
+        match key_press {
+            note::KeyPress::Backspace => {
+                note.pressed_body_backspace();
+                cx.notify();
+            }
+            note::KeyPress::OptionBackspace => {
+                note.pressed_body_option_backspace();
+                cx.notify();
+            }
+            note::KeyPress::CommandBackspace => {
+                note.pressed_body_command_backspace();
+                cx.notify();
+            }
+            note::KeyPress::Enter => {
+                note.content.push('\n');
+                note.started_editing();
+                cx.notify();
+            }
+            note::KeyPress::Save => {
+                let save_note = note.save();
+                self.dispatch_effect(Effect::SaveNote(save_note), cx);
+                cx.notify();
+            }
+            note::KeyPress::Text(key_char) => {
+                note.content.push_str(key_char);
+                note.started_editing();
                 cx.notify();
             }
         }
@@ -602,7 +676,7 @@ impl LoadedState {
                     .get_mut(&WindowId::from(front_note_id))
                     .map(Window::note_mut)
                 {
-                    note.clicked_rename();
+                    note.start_renaming();
                     self.active_field = Some(note.name_field_id());
                 }
                 cx.notify();
@@ -613,7 +687,7 @@ impl LoadedState {
                     return;
                 };
                 if let Some(note) = self.windows.get_mut(&front_window_id).map(Window::note_mut) {
-                    note.clicked_save_name();
+                    note.commit_rename();
                     if self.active_field == Some(note.name_field_id()) {
                         self.active_field = Some(note.body_field_id());
                     }
@@ -622,16 +696,7 @@ impl LoadedState {
             }
             note::Event::ClickedSaveButton => {
                 self.pressed_button = None;
-                let Some(front_window_id) = self.bring_window_to_front(WindowId::from(note_id))
-                else {
-                    return;
-                };
-                let Some(note) = self.windows.get_mut(&front_window_id).map(Window::note_mut)
-                else {
-                    return;
-                };
-                let save_note = note.save_note();
-                self.dispatch_effect(Effect::SaveNote(save_note), cx);
+                self.save_note(note_id, cx);
                 cx.notify();
             }
             note::Event::ClickedCloseButton => {
@@ -675,44 +740,9 @@ impl LoadedState {
                     return;
                 };
 
-                if active_field.kind == FieldKind::Name {
-                    self.pressed_name_key(key_press, cx);
-                    self.save_storage();
-                    return;
-                }
-
-                let Some(note) = self
-                    .windows
-                    .get_mut(&WindowId::from(active_field.note_id))
-                    .map(Window::note_mut)
-                else {
-                    self.active_field = None;
-                    return;
-                };
-
-                match key_press {
-                    note::KeyPress::Backspace => {
-                        note.pressed_body_backspace();
-                        cx.notify();
-                    }
-                    note::KeyPress::OptionBackspace => {
-                        note.pressed_body_option_backspace();
-                        cx.notify();
-                    }
-                    note::KeyPress::CommandBackspace => {
-                        note.pressed_body_command_backspace();
-                        cx.notify();
-                    }
-                    note::KeyPress::Enter => {
-                        note.content.push('\n');
-                        note.started_editing();
-                        cx.notify();
-                    }
-                    note::KeyPress::Text(key_char) => {
-                        note.content.push_str(key_char);
-                        note.started_editing();
-                        cx.notify();
-                    }
+                match active_field.kind {
+                    FieldKind::Name => self.pressed_note_name_key(active_field, key_press, cx),
+                    FieldKind::Body => self.pressed_note_body_key(active_field, key_press, cx),
                 }
             }
         }
