@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 
+mod transactions;
 mod ui;
 
 #[derive(Debug, Parser)]
@@ -14,6 +15,8 @@ struct Cli {
 enum Command {
     /// Start the notes UI.
     Notes,
+    /// Print a rerunnable Schwab transaction performance report.
+    AnalyzeTransactions,
 }
 
 fn main() {
@@ -21,5 +24,11 @@ fn main() {
 
     match cli.command {
         Command::Notes => ui::run(),
+        Command::AnalyzeTransactions => {
+            if let Err(error) = transactions::print_cli_report() {
+                eprintln!("failed to analyze transactions: {error}");
+                std::process::exit(1);
+            }
+        }
     }
 }
