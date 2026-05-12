@@ -20,6 +20,7 @@ pub struct Model {
     save_state: SaveState,
     edit_generation: u64,
     pub content: String,
+    body_cursor: usize,
     path: Option<PathBuf>,
 }
 
@@ -54,7 +55,10 @@ enum SaveState {
 
 pub enum RenamingState {
     NotRenaming,
-    Renaming { name_field: String },
+    Renaming {
+        name_field: String,
+        name_cursor: usize,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -100,6 +104,10 @@ pub enum KeyPress {
     Save,
     Paste,
     Text(String),
+    ArrowUp,
+    ArrowDown,
+    ArrowLeft,
+    ArrowRight,
 }
 
 impl Model {
@@ -127,6 +135,7 @@ impl Model {
             renaming: RenamingState::NotRenaming,
             save_state: SaveState::Idle,
             edit_generation: 0,
+            body_cursor: content.len(),
             content,
             path,
         }
@@ -163,11 +172,12 @@ impl Model {
     pub fn start_renaming(&mut self) {
         self.renaming = RenamingState::Renaming {
             name_field: self.name.clone(),
+            name_cursor: self.name.len(),
         };
     }
 
     pub fn commit_rename(&mut self) {
-        if let RenamingState::Renaming { name_field } = &self.renaming {
+        if let RenamingState::Renaming { name_field, .. } = &self.renaming {
             self.name = name_field.clone();
             self.started_editing();
         }
@@ -175,41 +185,148 @@ impl Model {
     }
 
     pub fn pressed_name_backspace(&mut self) {
-        if let RenamingState::Renaming { name_field } = &mut self.renaming {
-            name_field.pop();
+        if let RenamingState::Renaming {
+            name_field,
+            name_cursor,
+        } = &mut self.renaming
+        {
+            let Some(previous_index) = previous_char_index(name_field, *name_cursor) else {
+                return;
+            };
+            name_field.drain(previous_index..*name_cursor);
+            *name_cursor = previous_index;
         }
     }
 
     pub fn pressed_name_option_backspace(&mut self) {
-        if let RenamingState::Renaming { name_field } = &mut self.renaming {
-            delete_previous_word(name_field);
+        if let RenamingState::Renaming {
+            name_field,
+            name_cursor,
+        } = &mut self.renaming
+        {
+            delete_previous_word_before_cursor(name_field, name_cursor);
         }
     }
 
     pub fn pressed_name_command_backspace(&mut self) {
-        if let RenamingState::Renaming { name_field } = &mut self.renaming {
-            delete_current_line(name_field);
+        if let RenamingState::Renaming {
+            name_field,
+            name_cursor,
+        } = &mut self.renaming
+        {
+            delete_current_line_before_cursor(name_field, name_cursor);
         }
     }
 
     pub fn pressed_body_backspace(&mut self) {
-        self.content.pop();
+        let Some(previous_index) = previous_char_index(&self.content, self.body_cursor) else {
+            return;
+        };
+        self.content.drain(previous_index..self.body_cursor);
+        self.body_cursor = previous_index;
         self.started_editing();
     }
 
     pub fn pressed_body_option_backspace(&mut self) {
-        delete_previous_word(&mut self.content);
+        delete_previous_word_before_cursor(&mut self.content, &mut self.body_cursor);
         self.started_editing();
     }
 
     pub fn pressed_body_command_backspace(&mut self) {
-        delete_current_line(&mut self.content);
+        delete_current_line_before_cursor(&mut self.content, &mut self.body_cursor);
+        self.started_editing();
+    }
+
+    pub fn pressed_body_enter(&mut self) {
+        self.insert_body_text("\n");
+    }
+
+    pub fn pressed_body_key(&mut self, key_char: &str) {
+        self.insert_body_text(key_char);
+    }
+
+    pub fn move_body_cursor_left(&mut self) {
+        if let Some(previous_index) = previous_char_index(&self.content, self.body_cursor) {
+            self.body_cursor = previous_index;
+        }
+    }
+
+    pub fn move_body_cursor_right(&mut self) {
+        if let Some(next_index) = next_char_index(&self.content, self.body_cursor) {
+            self.body_cursor = next_index;
+        }
+    }
+
+    pub fn move_body_cursor_up(&mut self) {
+        self.body_cursor = vertical_cursor_index(&self.content, self.body_cursor, -1);
+    }
+
+    pub fn move_body_cursor_down(&mut self) {
+        self.body_cursor = vertical_cursor_index(&self.content, self.body_cursor, 1);
+    }
+
+    pub fn body_cursor(&self) -> usize {
+        self.body_cursor
+    }
+
+    fn insert_body_text(&mut self, text: &str) {
+        self.content.insert_str(self.body_cursor, text);
+        self.body_cursor += text.len();
         self.started_editing();
     }
 
     pub fn pressed_name_key(&mut self, key_char: &str) {
-        if let RenamingState::Renaming { name_field } = &mut self.renaming {
-            name_field.push_str(key_char);
+        if let RenamingState::Renaming {
+            name_field,
+            name_cursor,
+        } = &mut self.renaming
+        {
+            name_field.insert_str(*name_cursor, key_char);
+            *name_cursor += key_char.len();
+        }
+    }
+
+    pub fn move_name_cursor_left(&mut self) {
+        if let RenamingState::Renaming {
+            name_field,
+            name_cursor,
+        } = &mut self.renaming
+        {
+            if let Some(previous_index) = previous_char_index(name_field, *name_cursor) {
+                *name_cursor = previous_index;
+            }
+        }
+    }
+
+    pub fn move_name_cursor_right(&mut self) {
+        if let RenamingState::Renaming {
+            name_field,
+            name_cursor,
+        } = &mut self.renaming
+        {
+            if let Some(next_index) = next_char_index(name_field, *name_cursor) {
+                *name_cursor = next_index;
+            }
+        }
+    }
+
+    pub fn move_name_cursor_up(&mut self) {
+        if let RenamingState::Renaming {
+            name_field,
+            name_cursor,
+        } = &mut self.renaming
+        {
+            *name_cursor = vertical_cursor_index(name_field, *name_cursor, -1);
+        }
+    }
+
+    pub fn move_name_cursor_down(&mut self) {
+        if let RenamingState::Renaming {
+            name_field,
+            name_cursor,
+        } = &mut self.renaming
+        {
+            *name_cursor = vertical_cursor_index(name_field, *name_cursor, 1);
         }
     }
 
@@ -242,42 +359,105 @@ impl Model {
     }
 }
 
-fn delete_previous_word(text: &mut String) {
-    if text.is_empty() {
+fn delete_previous_word_before_cursor(text: &mut String, cursor: &mut usize) {
+    if *cursor == 0 {
         return;
     }
 
-    let mut after_trailing_whitespace = text.len();
-    for (index, character) in text.char_indices().rev() {
+    let before_cursor = &text[..*cursor];
+    let mut after_trailing_whitespace = *cursor;
+    for (index, character) in before_cursor.char_indices().rev() {
         if character.is_whitespace() {
             after_trailing_whitespace = index;
         } else {
             break;
         }
     }
-    text.truncate(after_trailing_whitespace);
 
+    let before_word_text = &text[..after_trailing_whitespace];
     let mut before_word = 0;
-    for (index, character) in text.char_indices().rev() {
+    for (index, character) in before_word_text.char_indices().rev() {
         if character.is_whitespace() {
             before_word = index + character.len_utf8();
             break;
         }
     }
-    text.truncate(before_word);
+
+    text.drain(before_word..*cursor);
+    *cursor = before_word;
 }
 
-fn delete_current_line(text: &mut String) {
-    if let Some(text_before_empty_line) = text.strip_suffix('\n') {
-        let previous_line_start = text_before_empty_line
-            .rfind('\n')
-            .map_or(0, |index| index + '\n'.len_utf8());
-        text.truncate(previous_line_start);
+fn delete_current_line_before_cursor(text: &mut String, cursor: &mut usize) {
+    if *cursor == 0 {
         return;
     }
 
-    let line_start = text.rfind('\n').map_or(0, |index| index + '\n'.len_utf8());
-    text.truncate(line_start);
+    let before_cursor = &text[..*cursor];
+    let line_start = if before_cursor.ends_with('\n') {
+        before_cursor
+            .strip_suffix('\n')
+            .and_then(|text_before_empty_line| {
+                text_before_empty_line
+                    .rfind('\n')
+                    .map(|index| index + '\n'.len_utf8())
+            })
+            .unwrap_or(0)
+    } else {
+        before_cursor
+            .rfind('\n')
+            .map_or(0, |index| index + '\n'.len_utf8())
+    };
+
+    text.drain(line_start..*cursor);
+    *cursor = line_start;
+}
+
+fn previous_char_index(text: &str, cursor: usize) -> Option<usize> {
+    text[..cursor].char_indices().last().map(|(index, _)| index)
+}
+
+fn next_char_index(text: &str, cursor: usize) -> Option<usize> {
+    text[cursor..]
+        .chars()
+        .next()
+        .map(|character| cursor + character.len_utf8())
+}
+
+fn vertical_cursor_index(text: &str, cursor: usize, direction: isize) -> usize {
+    let line_start = text[..cursor]
+        .rfind('\n')
+        .map_or(0, |index| index + '\n'.len_utf8());
+    let line_end = text[cursor..]
+        .find('\n')
+        .map_or(text.len(), |index| cursor + index);
+    let column = text[line_start..cursor].chars().count();
+
+    let Some(target_start) = (if direction < 0 {
+        line_start
+            .checked_sub('\n'.len_utf8())
+            .map(|previous_line_end| {
+                text[..previous_line_end]
+                    .rfind('\n')
+                    .map_or(0, |index| index + '\n'.len_utf8())
+            })
+    } else if line_end < text.len() {
+        Some(line_end + '\n'.len_utf8())
+    } else {
+        None
+    }) else {
+        return cursor;
+    };
+
+    let target_end = text[target_start..]
+        .find('\n')
+        .map_or(text.len(), |index| target_start + index);
+    index_for_column(&text[target_start..target_end], target_start, column)
+}
+
+fn index_for_column(line: &str, line_start: usize, column: usize) -> usize {
+    line.char_indices()
+        .nth(column)
+        .map_or(line_start + line.len(), |(index, _)| line_start + index)
 }
 
 pub fn save_note_file(save_request: SaveRequest) -> io::Result<PathBuf> {
@@ -424,7 +604,10 @@ where
                                 .on_key_down(cx.listener(move |_, event, _, cx| {
                                     emitted_key_event(emitter, event, cx);
                                 }))
-                                .children(render_lines(lines, show_body_cursor)),
+                                .children(render_lines(
+                                    lines,
+                                    show_body_cursor.then_some(note.body_cursor()),
+                                )),
                         )
                         .size_full()
                         .overflow_hidden(),
@@ -526,9 +709,13 @@ where
     let name_focus_handle = focus_handle.clone();
     let rename_button_focus_handle = focus_handle.clone();
     let rename_control = match &note.renaming {
-        RenamingState::Renaming { name_field } => {
+        RenamingState::Renaming {
+            name_field,
+            name_cursor,
+        } => {
             let name_field_with_cursor = if show_name_cursor {
-                format!("{}|", name_field)
+                let (before_cursor, after_cursor) = name_field.split_at(*name_cursor);
+                format!("{before_cursor}|{after_cursor}")
             } else {
                 name_field.clone()
             };
@@ -699,6 +886,10 @@ where
         "backspace" if event.keystroke.modifiers.alt => KeyPress::OptionBackspace,
         "backspace" => KeyPress::Backspace,
         "enter" => KeyPress::Enter,
+        "up" => KeyPress::ArrowUp,
+        "down" => KeyPress::ArrowDown,
+        "left" => KeyPress::ArrowLeft,
+        "right" => KeyPress::ArrowRight,
         _ => {
             if event.keystroke.modifiers.platform || event.keystroke.modifiers.control {
                 return;
@@ -714,22 +905,31 @@ where
     cx.stop_propagation();
     emitter.emit(cx, Event::PressedKey(key_press));
 }
-fn render_lines(lines: Vec<&str>, is_focused: bool) -> Vec<impl IntoElement> {
-    let last_index = lines.len().saturating_sub(1);
+fn render_lines(lines: Vec<&str>, cursor: Option<usize>) -> Vec<impl IntoElement> {
+    let mut line_start = 0;
 
     lines
         .into_iter()
-        .enumerate()
-        .map(move |(index, line)| {
-            let text = if is_focused && index == last_index {
-                format!("{line}|")
+        .map(move |line| {
+            let line_end = line_start + line.len();
+            let text = if cursor.is_some_and(|cursor| cursor >= line_start && cursor <= line_end) {
+                let cursor_in_line = cursor.expect("checked cursor is some") - line_start;
+                let (before_cursor, after_cursor) = line.split_at(cursor_in_line);
+                format!("{before_cursor}|{after_cursor}")
             } else if line.is_empty() {
                 " ".to_string()
             } else {
                 line.to_string()
             };
+            line_start = line_end + '\n'.len_utf8();
 
-            gpui::div().min_h(s::S6).text_color(s::GRAY6).child(text)
+            gpui::div()
+                .flex_none()
+                .min_h(s::S6)
+                .line_height(s::S6)
+                .whitespace_normal()
+                .text_color(s::GRAY6)
+                .child(text)
         })
         .collect()
 }

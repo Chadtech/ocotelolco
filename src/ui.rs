@@ -891,6 +891,46 @@ impl LoadedState {
                 }
                 cx.notify();
             }
+            note::KeyPress::ArrowUp => {
+                if let Some(note) = self
+                    .windows
+                    .get_mut(&WindowId::from(active_field.note_id))
+                    .and_then(|window| window.note_mut().ok())
+                {
+                    note.move_name_cursor_up();
+                }
+                cx.notify();
+            }
+            note::KeyPress::ArrowDown => {
+                if let Some(note) = self
+                    .windows
+                    .get_mut(&WindowId::from(active_field.note_id))
+                    .and_then(|window| window.note_mut().ok())
+                {
+                    note.move_name_cursor_down();
+                }
+                cx.notify();
+            }
+            note::KeyPress::ArrowLeft => {
+                if let Some(note) = self
+                    .windows
+                    .get_mut(&WindowId::from(active_field.note_id))
+                    .and_then(|window| window.note_mut().ok())
+                {
+                    note.move_name_cursor_left();
+                }
+                cx.notify();
+            }
+            note::KeyPress::ArrowRight => {
+                if let Some(note) = self
+                    .windows
+                    .get_mut(&WindowId::from(active_field.note_id))
+                    .and_then(|window| window.note_mut().ok())
+                {
+                    note.move_name_cursor_right();
+                }
+                cx.notify();
+            }
             note::KeyPress::Text(key_char) => {
                 if let Some(note) = self
                     .windows
@@ -933,8 +973,7 @@ impl LoadedState {
                 cx.notify();
             }
             note::KeyPress::Enter => {
-                note.content.push('\n');
-                note.started_editing();
+                note.pressed_body_enter();
                 cx.notify();
             }
             note::KeyPress::Save => {
@@ -946,13 +985,27 @@ impl LoadedState {
                 let Some(text) = clipboard_text(cx) else {
                     return;
                 };
-                note.content.push_str(&text);
-                note.started_editing();
+                note.pressed_body_key(&text);
                 cx.notify();
             }
             note::KeyPress::Text(key_char) => {
-                note.content.push_str(key_char);
-                note.started_editing();
+                note.pressed_body_key(key_char);
+                cx.notify();
+            }
+            note::KeyPress::ArrowUp => {
+                note.move_body_cursor_up();
+                cx.notify();
+            }
+            note::KeyPress::ArrowDown => {
+                note.move_body_cursor_down();
+                cx.notify();
+            }
+            note::KeyPress::ArrowLeft => {
+                note.move_body_cursor_left();
+                cx.notify();
+            }
+            note::KeyPress::ArrowRight => {
+                note.move_body_cursor_right();
                 cx.notify();
             }
         }

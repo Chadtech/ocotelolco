@@ -4,6 +4,7 @@ debug
 target
 .DS_Store
 ui.json
+notes/*.json
 imports/**/*.csv
 imports/**/*.CSV
 !imports/.gitkeep
