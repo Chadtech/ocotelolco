@@ -59,6 +59,7 @@ pub enum RenamingState {
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum ButtonId {
+    Rename,
     Save,
     X,
 }
@@ -347,6 +348,7 @@ where
     let body_focus_handle = focus_handle.clone();
     let close_button_pressed = pressed_button == Some(&ButtonId::X);
     let save_button_pressed = pressed_button == Some(&ButtonId::Save);
+    let rename_button_pressed = pressed_button == Some(&ButtonId::Rename);
 
     s::raised(
         gpui::div()
@@ -386,6 +388,7 @@ where
                 note,
                 focus_handle,
                 show_name_cursor,
+                rename_button_pressed,
                 cx,
             ))
             .child(
@@ -501,6 +504,7 @@ fn rename_row<T>(
     note: &Model,
     focus_handle: &FocusHandle,
     show_name_cursor: bool,
+    rename_button_pressed: bool,
     cx: &mut Context<T>,
 ) -> impl IntoElement
 where
@@ -555,14 +559,33 @@ where
                 ))
         }
         RenamingState::NotRenaming => gpui::div().flex().items_center().size_full().child(
-            view::button::from_text("rename", false).on_mouse_up(
-                MouseButton::Left,
-                cx.listener(move |_, _: &MouseUpEvent, window, cx| {
-                    window.focus(&rename_button_focus_handle);
-                    cx.stop_propagation();
-                    emitter.emit(cx, Event::ClickedRename);
-                }),
-            ),
+            view::button::from_text("rename", rename_button_pressed)
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |_, _: &MouseDownEvent, window, cx| {
+                        window.focus(&rename_button_focus_handle);
+                        cx.stop_propagation();
+                        emitter.emit(
+                            cx,
+                            Event::PressedButton {
+                                button_id: ButtonId::Rename,
+                            },
+                        );
+                    }),
+                )
+                .on_mouse_up(
+                    MouseButton::Left,
+                    cx.listener(move |_, _: &MouseUpEvent, _, cx| {
+                        cx.stop_propagation();
+                        emitter.emit(cx, Event::ClickedRename);
+                    }),
+                )
+                .on_mouse_up_out(
+                    MouseButton::Left,
+                    cx.listener(move |_, _: &MouseUpEvent, _, cx| {
+                        emitter.emit(cx, Event::ReleasedButton);
+                    }),
+                ),
         ),
     };
 

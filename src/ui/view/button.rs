@@ -15,7 +15,7 @@ enum Size {
     Square,
 }
 
-fn button(label: &'static str, pressed: bool, size: Size) -> gpui::Div {
+fn button(label: impl IntoElement, pressed: bool, size: Size) -> gpui::Div {
     let button = gpui::div()
         .flex()
         .items_center()
