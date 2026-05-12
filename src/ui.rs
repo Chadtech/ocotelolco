@@ -101,6 +101,7 @@ enum StorageWindowContent {
 enum WindowId {
     Note(NoteId),
     Spreadsheet(SpreadsheetId),
+    NotePicker,
     SpreadsheetPicker,
 }
 
@@ -115,6 +116,7 @@ struct Window {
 enum WindowContent {
     Note(note::Model),
     Spreadsheet(spreadsheet::Model),
+    NotePicker { paths: Vec<PathBuf> },
     SpreadsheetPicker { paths: Vec<PathBuf> },
 }
 
@@ -144,6 +146,16 @@ impl Window {
         }
     }
 
+    fn new_note_picker(paths: Vec<PathBuf>, offset: f32) -> Self {
+        Self {
+            x: 64.0 + offset,
+            y: 64.0 + offset,
+            height: DEFAULT_WINDOW_SIZE,
+            width: 320.0,
+            content: WindowContent::NotePicker { paths },
+        }
+    }
+
     fn new_spreadsheet_picker(paths: Vec<PathBuf>, offset: f32) -> Self {
         Self {
             x: 64.0 + offset,
@@ -170,7 +182,9 @@ impl Window {
             WindowContent::Spreadsheet(spreadsheet) => {
                 StorageWindowContent::Spreadsheet(spreadsheet.to_storage_state())
             }
-            WindowContent::SpreadsheetPicker { .. } => return None,
+            WindowContent::NotePicker { .. } | WindowContent::SpreadsheetPicker { .. } => {
+                return None;
+            }
         };
 
         Some(StorageWindow {
@@ -185,25 +199,27 @@ impl Window {
     fn note(&self) -> Result<&note::Model, WindowContentError> {
         match &self.content {
             WindowContent::Note(note) => Ok(note),
-            WindowContent::Spreadsheet(_) | WindowContent::SpreadsheetPicker { .. } => {
-                Err(WindowContentError::ExpectedNote)
-            }
+            WindowContent::Spreadsheet(_)
+            | WindowContent::NotePicker { .. }
+            | WindowContent::SpreadsheetPicker { .. } => Err(WindowContentError::ExpectedNote),
         }
     }
 
     fn note_mut(&mut self) -> Result<&mut note::Model, WindowContentError> {
         match &mut self.content {
             WindowContent::Note(note) => Ok(note),
-            WindowContent::Spreadsheet(_) | WindowContent::SpreadsheetPicker { .. } => {
-                Err(WindowContentError::ExpectedNote)
-            }
+            WindowContent::Spreadsheet(_)
+            | WindowContent::NotePicker { .. }
+            | WindowContent::SpreadsheetPicker { .. } => Err(WindowContentError::ExpectedNote),
         }
     }
 
     fn spreadsheet(&self) -> Result<&spreadsheet::Model, WindowContentError> {
         match &self.content {
             WindowContent::Spreadsheet(spreadsheet) => Ok(spreadsheet),
-            WindowContent::Note(_) | WindowContent::SpreadsheetPicker { .. } => {
+            WindowContent::Note(_)
+            | WindowContent::NotePicker { .. }
+            | WindowContent::SpreadsheetPicker { .. } => {
                 Err(WindowContentError::ExpectedSpreadsheet)
             }
         }
@@ -212,7 +228,9 @@ impl Window {
     fn spreadsheet_mut(&mut self) -> Result<&mut spreadsheet::Model, WindowContentError> {
         match &mut self.content {
             WindowContent::Spreadsheet(spreadsheet) => Ok(spreadsheet),
-            WindowContent::Note(_) | WindowContent::SpreadsheetPicker { .. } => {
+            WindowContent::Note(_)
+            | WindowContent::NotePicker { .. }
+            | WindowContent::SpreadsheetPicker { .. } => {
                 Err(WindowContentError::ExpectedSpreadsheet)
             }
         }
@@ -223,14 +241,14 @@ impl WindowId {
     fn note_id(self) -> Option<NoteId> {
         match self {
             Self::Note(note_id) => Some(note_id),
-            Self::Spreadsheet(_) | Self::SpreadsheetPicker => None,
+            Self::Spreadsheet(_) | Self::NotePicker | Self::SpreadsheetPicker => None,
         }
     }
 
     fn spreadsheet_id(self) -> Option<SpreadsheetId> {
         match self {
             Self::Spreadsheet(spreadsheet_id) => Some(spreadsheet_id),
-            Self::Note(_) | Self::SpreadsheetPicker => None,
+            Self::Note(_) | Self::NotePicker | Self::SpreadsheetPicker => None,
         }
     }
 }
@@ -251,6 +269,7 @@ impl From<SpreadsheetId> for WindowId {
 enum ButtonId {
     NewNote,
     NewSpreadsheet,
+    OpenNotePicker,
     OpenSpreadsheetPicker,
     NoteButtonId {
         note_id: NoteId,
@@ -276,9 +295,16 @@ enum Event<'a> {
     PressedNewSpreadsheetButton,
     ClickedNewSpreadsheetButton,
     ReleasedNewSpreadsheetButtonOutside,
+    PressedOpenNotePickerButton,
+    ClickedOpenNotePickerButton,
+    ReleasedOpenNotePickerButtonOutside,
     PressedOpenSpreadsheetPickerButton,
     ClickedOpenSpreadsheetPickerButton,
     ReleasedOpenSpreadsheetPickerButtonOutside,
+    ClickedSavedNote(PathBuf),
+    ClickedCloseNotePicker,
+    PressedNotePickerHeader { x: f32, y: f32 },
+    PressedNotePickerResizeHandle { x: f32, y: f32 },
     ClickedSavedSpreadsheet(PathBuf),
     ClickedCloseSpreadsheetPicker,
     PressedSpreadsheetPickerHeader { x: f32, y: f32 },
@@ -386,6 +412,7 @@ impl Model {
         }
         note.finished_saving(generation, result);
         state.save_storage();
+        state.refresh_note_picker();
         cx.notify();
     }
 
@@ -483,6 +510,7 @@ impl LoadedState {
             let window_id = match &content {
                 WindowContent::Note(note) => WindowId::from(note.id),
                 WindowContent::Spreadsheet(spreadsheet) => WindowId::from(spreadsheet.id),
+                WindowContent::NotePicker { .. } => WindowId::NotePicker,
                 WindowContent::SpreadsheetPicker { .. } => WindowId::SpreadsheetPicker,
             };
             state.window_order.push(window_id);
@@ -595,6 +623,19 @@ impl LoadedState {
                 self.pressed_button = None;
                 cx.notify();
             }
+            Event::PressedOpenNotePickerButton => {
+                self.pressed_button = Some(ButtonId::OpenNotePicker);
+                cx.notify();
+            }
+            Event::ClickedOpenNotePickerButton => {
+                self.pressed_button = None;
+                self.toggle_note_picker();
+                cx.notify();
+            }
+            Event::ReleasedOpenNotePickerButtonOutside => {
+                self.pressed_button = None;
+                cx.notify();
+            }
             Event::PressedOpenSpreadsheetPickerButton => {
                 self.pressed_button = Some(ButtonId::OpenSpreadsheetPicker);
                 cx.notify();
@@ -606,6 +647,39 @@ impl LoadedState {
             }
             Event::ReleasedOpenSpreadsheetPickerButtonOutside => {
                 self.pressed_button = None;
+                cx.notify();
+            }
+            Event::ClickedSavedNote(path) => {
+                self.open_saved_note(path);
+                self.close_note_picker();
+                cx.notify();
+            }
+            Event::ClickedCloseNotePicker => {
+                self.close_note_picker();
+                cx.notify();
+            }
+            Event::PressedNotePickerHeader { x, y } => {
+                if self.bring_window_to_front(WindowId::NotePicker).is_none() {
+                    return;
+                }
+                self.pointer_interaction =
+                    Some(PointerInteraction::Drag(PointerInteractionState {
+                        window_id: WindowId::NotePicker,
+                        last_x: x,
+                        last_y: y,
+                    }));
+                cx.notify();
+            }
+            Event::PressedNotePickerResizeHandle { x, y } => {
+                if self.bring_window_to_front(WindowId::NotePicker).is_none() {
+                    return;
+                }
+                self.pointer_interaction =
+                    Some(PointerInteraction::Resize(PointerInteractionState {
+                        window_id: WindowId::NotePicker,
+                        last_x: x,
+                        last_y: y,
+                    }));
                 cx.notify();
             }
             Event::ClickedSavedSpreadsheet(path) => {
@@ -811,6 +885,109 @@ impl LoadedState {
         let save_note = note.save();
         self.dispatch_effect(Effect::SaveNote(save_note), cx);
         true
+    }
+
+    fn toggle_note_picker(&mut self) {
+        if self.windows.contains_key(&WindowId::NotePicker) {
+            self.refresh_note_picker();
+            return;
+        }
+
+        let offset = self.window_order.len() as f32 * 24.0;
+        self.windows.insert(
+            WindowId::NotePicker,
+            Window::new_note_picker(self.available_saved_note_paths(), offset),
+        );
+        self.window_order.push(WindowId::NotePicker);
+    }
+
+    fn refresh_note_picker(&mut self) {
+        let paths = self.available_saved_note_paths();
+        if let Some(Window {
+            content: WindowContent::NotePicker {
+                paths: picker_paths,
+            },
+            ..
+        }) = self.windows.get_mut(&WindowId::NotePicker)
+        {
+            *picker_paths = paths;
+        }
+    }
+
+    fn available_saved_note_paths(&self) -> Vec<PathBuf> {
+        let mut paths = saved_note_paths().unwrap_or_else(|error| {
+            eprintln!("failed to list saved notes: {error}");
+            Vec::new()
+        });
+        paths.retain(|path| !self.note_path_is_open(path));
+        paths
+    }
+
+    fn close_note_picker(&mut self) {
+        self.windows.remove(&WindowId::NotePicker);
+        self.window_order
+            .retain(|window_id| *window_id != WindowId::NotePicker);
+        if matches!(
+            self.pointer_interaction,
+            Some(PointerInteraction::Drag(PointerInteractionState {
+                window_id: WindowId::NotePicker,
+                ..
+            })) | Some(PointerInteraction::Resize(PointerInteractionState {
+                window_id: WindowId::NotePicker,
+                ..
+            }))
+        ) {
+            self.pointer_interaction = None;
+        }
+    }
+
+    fn open_saved_note(&mut self, path: PathBuf) {
+        if self.note_path_is_open(&path) {
+            return;
+        }
+
+        let Some(storage) = load_storage_window_note(&path) else {
+            return;
+        };
+
+        let offset = self.window_order.len() as f32 * 24.0;
+        let note_id = self.next_note_id;
+        let window_id = WindowId::Note(note_id);
+        self.next_note_id = NoteId(self.next_note_id.0 + 1);
+        self.windows.insert(
+            window_id,
+            Window {
+                x: 32.0 + offset,
+                y: 32.0 + offset,
+                height: DEFAULT_WINDOW_SIZE,
+                width: DEFAULT_WINDOW_SIZE,
+                content: WindowContent::Note(note::Model::from_storage(
+                    note_id,
+                    storage,
+                    Some(path),
+                )),
+            },
+        );
+        self.window_order.push(window_id);
+        self.active_field = Some(ActiveFieldId::Note(
+            self.windows
+                .get(&window_id)
+                .and_then(|window| window.note().ok())
+                .expect("inserted note window")
+                .body_field_id(),
+        ));
+
+        self.save_storage();
+    }
+
+    fn note_path_is_open(&self, path: &Path) -> bool {
+        self.windows.values().any(|window| {
+            window
+                .note()
+                .ok()
+                .and_then(note::Model::path)
+                .is_some_and(|open_path| open_path == path)
+        })
     }
 
     fn commit_rename_and_focus_body(&mut self, note_id: NoteId) -> bool {
@@ -1106,6 +1283,7 @@ impl LoadedState {
                     self.window_order
                         .retain(|ordered_window_id| *ordered_window_id != front_window_id);
                     self.pointer_interaction = None;
+                    self.refresh_note_picker();
                     self.refresh_spreadsheet_picker();
                     cx.notify();
                 }
@@ -1676,6 +1854,27 @@ fn load_storage_window_spreadsheet(spreadsheet_path: &Path) -> Option<spreadshee
     }
 }
 
+fn saved_note_paths() -> io::Result<Vec<PathBuf>> {
+    let notes_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("notes");
+    let mut paths = Vec::new();
+    let entries = match std::fs::read_dir(notes_dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(paths),
+        Err(error) => return Err(error),
+    };
+
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|extension| extension.to_str()) == Some("json") {
+            paths.push(path);
+        }
+    }
+
+    paths.sort();
+    Ok(paths)
+}
+
 fn saved_spreadsheet_paths() -> io::Result<Vec<PathBuf>> {
     let spreadsheets_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("spreadsheets");
     let mut paths = Vec::new();
@@ -1781,6 +1980,9 @@ impl LoadedState {
                             cx,
                         )
                     }
+                    WindowContent::NotePicker { paths } => {
+                        render_saved_note_picker(paths, focus_handle, is_focused, cx)
+                    }
                     WindowContent::SpreadsheetPicker { paths } => {
                         render_saved_spreadsheet_picker(paths, focus_handle, is_focused, cx)
                     }
@@ -1833,6 +2035,7 @@ impl LoadedState {
             .child(toolbar(
                 self.pressed_button == Some(ButtonId::NewNote),
                 self.pressed_button == Some(ButtonId::NewSpreadsheet),
+                self.pressed_button == Some(ButtonId::OpenNotePicker),
                 self.pressed_button == Some(ButtonId::OpenSpreadsheetPicker),
                 cx,
             ))
@@ -1856,6 +2059,7 @@ impl Render for Model {
 fn toolbar(
     new_note_button_pressed: bool,
     new_spreadsheet_button_pressed: bool,
+    open_note_picker_button_pressed: bool,
     open_spreadsheet_picker_button_pressed: bool,
     cx: &mut Context<Model>,
 ) -> impl IntoElement {
@@ -1912,6 +2116,28 @@ fn toolbar(
                 ),
         )
         .child(
+            view::button::from_text("open note", open_note_picker_button_pressed)
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|model, _event, _, cx| {
+                        model.handle_event(Event::PressedOpenNotePickerButton, cx);
+                    }),
+                )
+                .on_mouse_up(
+                    MouseButton::Left,
+                    cx.listener(|model, _event, window, cx| {
+                        window.focus(&model.focus_handle);
+                        model.handle_event(Event::ClickedOpenNotePickerButton, cx);
+                    }),
+                )
+                .on_mouse_up_out(
+                    MouseButton::Left,
+                    cx.listener(|model, _event, _, cx| {
+                        model.handle_event(Event::ReleasedOpenNotePickerButtonOutside, cx);
+                    }),
+                ),
+        )
+        .child(
             view::button::from_text("open sheet", open_spreadsheet_picker_button_pressed)
                 .on_mouse_down(
                     MouseButton::Left,
@@ -1933,6 +2159,109 @@ fn toolbar(
                     }),
                 ),
         )
+}
+
+fn render_saved_note_picker(
+    paths: &[PathBuf],
+    focus_handle: &FocusHandle,
+    is_focused: bool,
+    cx: &mut Context<Model>,
+) -> gpui::Div {
+    let header_focus_handle = focus_handle.clone();
+    let note_rows = if paths.is_empty() {
+        vec![gpui::div()
+            .p(s::S3)
+            .text_color(s::YELLOW3)
+            .child("no saved notes")]
+    } else {
+        paths
+            .iter()
+            .cloned()
+            .map(|path| {
+                gpui::div()
+                    .w_full()
+                    .min_h(s::S6)
+                    .flex()
+                    .items_center()
+                    .px(s::S4)
+                    .py(s::S3)
+                    .bg(s::GREEN2)
+                    .text_color(s::GRAY6)
+                    .cursor_pointer()
+                    .hover(|row| row.bg(s::GREEN4))
+                    .child(saved_note_label(&path))
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(move |model, _event, window, cx| {
+                            window.focus(&model.focus_handle);
+                            cx.stop_propagation();
+                            model.handle_event(Event::ClickedSavedNote(path.clone()), cx);
+                        }),
+                    )
+            })
+            .collect()
+    };
+
+    let title = if is_focused { "open note" } else { "open note" };
+
+    s::raised(
+        gpui::div()
+            .flex()
+            .flex_col()
+            .size_full()
+            .bg(s::GRAY2)
+            .p(s::S3)
+            .child(
+                gpui::div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .justify_between()
+                    .bg(s::GRAY5)
+                    .text_color(s::GREEN1)
+                    .p(s::S3)
+                    .px(s::S4)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |model, event: &MouseDownEvent, window, cx| {
+                            window.focus(&header_focus_handle);
+                            cx.stop_propagation();
+                            model.handle_event(
+                                Event::PressedNotePickerHeader {
+                                    x: event.position.x.into(),
+                                    y: event.position.y.into(),
+                                },
+                                cx,
+                            );
+                        }),
+                    )
+                    .child(title)
+                    .child(view::button::x(false).on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(|model, _event, _, cx| {
+                            cx.stop_propagation();
+                            model.handle_event(Event::ClickedCloseNotePicker, cx);
+                        }),
+                    )),
+            )
+            .child(
+                s::sunken(
+                    gpui::div()
+                        .id("saved-note-picker-list")
+                        .overflow_y_scroll()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_h(gpui::px(0.0))
+                        .bg(s::GREEN1)
+                        .p(s::S3)
+                        .children(note_rows),
+                )
+                .flex_1()
+                .min_h(gpui::px(0.0)),
+            ),
+    )
+    .child(resize_note_picker_handle(focus_handle, cx))
 }
 
 fn render_saved_spreadsheet_picker(
@@ -2042,6 +2371,48 @@ fn render_saved_spreadsheet_picker(
     .child(resize_spreadsheet_picker_handle(focus_handle, cx))
 }
 
+fn resize_note_picker_handle(
+    focus_handle: &FocusHandle,
+    cx: &mut Context<Model>,
+) -> impl IntoElement {
+    let focus_handle = focus_handle.clone();
+    gpui::div()
+        .absolute()
+        .right_0()
+        .bottom_0()
+        .size(s::S5)
+        .child(
+            gpui::canvas(
+                |_, _, _| {},
+                |bounds, _, window, _| {
+                    let mut builder = gpui::PathBuilder::stroke(s::S2);
+                    builder.move_to(gpui::point(bounds.right() - s::S4, bounds.bottom() - s::S2));
+                    builder.line_to(gpui::point(bounds.right() - s::S2, bounds.bottom() - s::S4));
+                    builder.move_to(gpui::point(bounds.right() - s::S3, bounds.bottom() - s::S2));
+                    builder.line_to(gpui::point(bounds.right() - s::S2, bounds.bottom() - s::S3));
+                    if let Ok(path) = builder.build() {
+                        window.paint_path(path, s::GRAY1);
+                    }
+                },
+            )
+            .size_full(),
+        )
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |model, event: &MouseDownEvent, window, cx| {
+                window.focus(&focus_handle);
+                cx.stop_propagation();
+                model.handle_event(
+                    Event::PressedNotePickerResizeHandle {
+                        x: event.position.x.into(),
+                        y: event.position.y.into(),
+                    },
+                    cx,
+                );
+            }),
+        )
+}
+
 fn resize_spreadsheet_picker_handle(
     focus_handle: &FocusHandle,
     cx: &mut Context<Model>,
@@ -2088,5 +2459,12 @@ fn saved_spreadsheet_label(path: &Path) -> String {
     path.file_stem()
         .and_then(|stem| stem.to_str())
         .unwrap_or("spreadsheet")
+        .replace('-', " ")
+}
+
+fn saved_note_label(path: &Path) -> String {
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("note")
         .replace('-', " ")
 }
