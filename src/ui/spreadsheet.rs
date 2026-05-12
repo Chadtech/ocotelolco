@@ -13,6 +13,7 @@ use crate::ui::{style as s, view};
 const DEFAULT_ROWS: usize = 12;
 const DEFAULT_COLUMNS: usize = 8;
 const CELL_WIDTH: f32 = 96.0;
+const MIN_CELL_WIDTH: f32 = 40.0;
 const CELL_HEIGHT: f32 = 28.0;
 const ROW_HEADER_WIDTH: f32 = 36.0;
 const ROW_ACTION_WIDTH: f32 = 84.0;
@@ -48,6 +49,7 @@ pub struct Model {
     active_column: usize,
     selected_row: Option<usize>,
     selected_column: Option<usize>,
+    column_widths: Vec<f32>,
     path: Option<PathBuf>,
 }
 
@@ -55,11 +57,17 @@ pub struct Model {
 pub struct Storage {
     pub name: String,
     pub rows: Vec<Vec<String>>,
+    #[serde(default)]
+    pub column_widths: Vec<f32>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 pub enum StorageState {
-    Saved { path: PathBuf },
+    Saved {
+        path: PathBuf,
+        #[serde(default)]
+        column_widths: Vec<f32>,
+    },
     Unsaved(Storage),
 }
 
@@ -99,6 +107,7 @@ pub enum Event {
     PressedCell { row: usize, column: usize },
     PressedRowHeader { row: usize },
     PressedColumnHeader { column: usize },
+    PressedColumnResizeHandle { column: usize, x: f32 },
     ClickedInsertRowAbove { row: usize },
     ClickedInsertRowBelow { row: usize },
     ClickedDeleteRow { row: usize },
@@ -155,13 +164,16 @@ impl Model {
     }
 
     fn initialize(id: SpreadsheetId, init_flags: InitFlags) -> Self {
-        let (name, rows, path) = match init_flags {
+        let (name, rows, column_widths, path) = match init_flags {
             InitFlags::New { ordinal } => (
                 format!("spreadsheet {ordinal}"),
                 vec![vec![String::new(); DEFAULT_COLUMNS]; DEFAULT_ROWS],
+                vec![CELL_WIDTH; DEFAULT_COLUMNS],
                 None,
             ),
-            InitFlags::FromStorage { storage, path } => (storage.name, storage.rows, path),
+            InitFlags::FromStorage { storage, path } => {
+                (storage.name, storage.rows, storage.column_widths, path)
+            }
         };
 
         let mut spreadsheet = Self {
@@ -175,6 +187,7 @@ impl Model {
             active_column: 0,
             selected_row: None,
             selected_column: None,
+            column_widths,
             path,
         };
         spreadsheet.normalize_shape();
@@ -185,6 +198,7 @@ impl Model {
         Storage {
             name: self.name.clone(),
             rows: self.rows.clone(),
+            column_widths: self.column_widths.clone(),
         }
     }
 
@@ -192,6 +206,7 @@ impl Model {
         match self.path.as_ref() {
             Some(path) => StorageState::Saved {
                 path: PathBuf::from(path),
+                column_widths: self.column_widths.clone(),
             },
             None => StorageState::Unsaved(self.to_storage()),
         }
@@ -254,6 +269,7 @@ impl Model {
         for row in &mut self.rows {
             row.insert(column, String::new());
         }
+        self.column_widths.insert(column, CELL_WIDTH);
         self.active_column = column;
         self.selected_column = Some(column);
         self.selected_row = None;
@@ -266,6 +282,7 @@ impl Model {
         for row in &mut self.rows {
             row.insert(column, String::new());
         }
+        self.column_widths.insert(column, CELL_WIDTH);
         self.active_column = column;
         self.selected_column = Some(column);
         self.selected_row = None;
@@ -282,6 +299,7 @@ impl Model {
         for row in &mut self.rows {
             row.remove(column);
         }
+        self.column_widths.remove(column);
         self.active_column = column.min(self.column_count().saturating_sub(1));
         self.selected_column = Some(self.active_column);
         self.selected_row = None;
@@ -384,6 +402,24 @@ impl Model {
         self.started_editing();
     }
 
+    pub fn resize_column_by(&mut self, column: usize, dx: f32) {
+        self.normalize_column_widths();
+        if let Some(width) = self.column_widths.get_mut(column) {
+            *width = (*width + dx).max(MIN_CELL_WIDTH);
+        }
+    }
+
+    fn column_width(&self, column: usize) -> f32 {
+        self.column_widths
+            .get(column)
+            .copied()
+            .unwrap_or(CELL_WIDTH)
+    }
+
+    fn grid_width(&self) -> f32 {
+        ROW_ACTION_WIDTH + ROW_HEADER_WIDTH + self.column_widths.iter().sum::<f32>()
+    }
+
     fn started_editing(&mut self) {
         self.edit_generation += 1;
         self.save_state = SaveState::Idle;
@@ -435,6 +471,16 @@ impl Model {
 
         while self.rows.len() < DEFAULT_ROWS {
             self.rows.push(vec![String::new(); column_count]);
+        }
+
+        self.normalize_column_widths();
+    }
+
+    fn normalize_column_widths(&mut self) {
+        let column_count = self.column_count();
+        self.column_widths.resize(column_count, CELL_WIDTH);
+        for width in &mut self.column_widths {
+            *width = (*width).max(MIN_CELL_WIDTH);
         }
     }
 }
@@ -491,6 +537,7 @@ pub fn load_spreadsheet_file(path: &Path) -> io::Result<Storage> {
     Ok(Storage {
         name,
         rows: csv_to_rows(&contents),
+        column_widths: Vec::new(),
     })
 }
 
@@ -803,22 +850,22 @@ fn render_grid<T>(
 where
     T: EventEmitter<IdEvent> + 'static,
 {
-    let grid_width =
-        ROW_ACTION_WIDTH + ROW_HEADER_WIDTH + spreadsheet.column_count() as f32 * CELL_WIDTH;
+    let grid_width = spreadsheet.grid_width();
     let grid_height = (spreadsheet.rows.len() + 2) as f32 * CELL_HEIGHT;
     let mut column_action_cells = Vec::new();
     for column in 0..spreadsheet.column_count() {
         let column_action_focus_handle = focus_handle.clone();
         let selected = spreadsheet.selected_column == Some(column);
+        let column_width = spreadsheet.column_width(column);
         column_action_cells.push(
             gpui::div()
                 .flex()
                 .flex_none()
                 .items_center()
                 .justify_center()
-                .w(gpui::px(CELL_WIDTH))
-                .min_w(gpui::px(CELL_WIDTH))
-                .max_w(gpui::px(CELL_WIDTH))
+                .w(gpui::px(column_width))
+                .min_w(gpui::px(column_width))
+                .max_w(gpui::px(column_width))
                 .h(gpui::px(CELL_HEIGHT))
                 .min_h(gpui::px(CELL_HEIGHT))
                 .max_h(gpui::px(CELL_HEIGHT))
@@ -858,15 +905,17 @@ where
     let mut header_cells = Vec::new();
     for column in 0..spreadsheet.column_count() {
         let focus_handle = focus_handle.clone();
+        let column_width = spreadsheet.column_width(column);
         header_cells.push(
             gpui::div()
                 .flex()
                 .flex_none()
                 .items_center()
                 .justify_center()
-                .w(gpui::px(CELL_WIDTH))
-                .min_w(gpui::px(CELL_WIDTH))
-                .max_w(gpui::px(CELL_WIDTH))
+                .relative()
+                .w(gpui::px(column_width))
+                .min_w(gpui::px(column_width))
+                .max_w(gpui::px(column_width))
                 .h(gpui::px(CELL_HEIGHT))
                 .min_h(gpui::px(CELL_HEIGHT))
                 .max_h(gpui::px(CELL_HEIGHT))
@@ -875,6 +924,7 @@ where
                 .border_1()
                 .border_color(s::GREEN5)
                 .child(column_label(column))
+                .child(column_resize_handle(column, emitter, &focus_handle, cx))
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(move |_, _: &MouseDownEvent, window, cx| {
@@ -896,6 +946,7 @@ where
                 row_index,
                 column_index,
                 cell,
+                spreadsheet.column_width(column_index),
                 focus_handle,
                 active_cell,
                 is_focused,
@@ -993,6 +1044,7 @@ fn render_cell<T>(
     row: usize,
     column: usize,
     cell: &str,
+    width: f32,
     focus_handle: &FocusHandle,
     active_cell: Option<&CellFieldId>,
     is_focused: bool,
@@ -1023,9 +1075,9 @@ where
         .flex()
         .flex_none()
         .items_center()
-        .w(gpui::px(CELL_WIDTH))
-        .min_w(gpui::px(CELL_WIDTH))
-        .max_w(gpui::px(CELL_WIDTH))
+        .w(gpui::px(width))
+        .min_w(gpui::px(width))
+        .max_w(gpui::px(width))
         .h(gpui::px(CELL_HEIGHT))
         .min_h(gpui::px(CELL_HEIGHT))
         .max_h(gpui::px(CELL_HEIGHT))
@@ -1118,6 +1170,54 @@ where
             cx.listener(move |_, _: &MouseDownEvent, window, cx| {
                 window.focus(&focus_handle);
                 cx.stop_propagation();
+            }),
+        )
+}
+
+fn column_resize_handle<T>(
+    column: usize,
+    emitter: IdEmitter,
+    focus_handle: &FocusHandle,
+    cx: &mut Context<T>,
+) -> impl IntoElement
+where
+    T: EventEmitter<IdEvent>,
+{
+    let focus_handle = focus_handle.clone();
+    gpui::div()
+        .absolute()
+        .right_0()
+        .top_0()
+        .bottom_0()
+        .w(s::S4)
+        .cursor_col_resize()
+        .hover(|handle| handle.bg(s::GREEN5))
+        .child(
+            gpui::canvas(
+                |_, _, _| {},
+                |bounds, _, window, _| {
+                    let mut builder = gpui::PathBuilder::stroke(s::S1);
+                    builder.move_to(gpui::point(bounds.right() - s::S2, bounds.top() + s::S3));
+                    builder.line_to(gpui::point(bounds.right() - s::S2, bounds.bottom() - s::S3));
+                    if let Ok(path) = builder.build() {
+                        window.paint_path(path, s::GRAY4);
+                    }
+                },
+            )
+            .size_full(),
+        )
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |_, event: &MouseDownEvent, window, cx| {
+                window.focus(&focus_handle);
+                cx.stop_propagation();
+                emitter.emit(
+                    cx,
+                    Event::PressedColumnResizeHandle {
+                        column,
+                        x: event.position.x.into(),
+                    },
+                );
             }),
         )
 }
@@ -1358,6 +1458,7 @@ mod tests {
                 "has \"quote\"".to_string(),
                 "two\nlines".to_string(),
             ]],
+            column_widths: Vec::new(),
         };
 
         assert_eq!(

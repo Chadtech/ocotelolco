@@ -316,12 +316,19 @@ enum Event<'a> {
 enum PointerInteraction {
     Drag(PointerInteractionState),
     Resize(PointerInteractionState),
+    ColumnResize(ColumnResizeInteractionState),
 }
 
 struct PointerInteractionState {
     window_id: WindowId,
     last_x: f32,
     last_y: f32,
+}
+
+struct ColumnResizeInteractionState {
+    spreadsheet_id: SpreadsheetId,
+    column: usize,
+    last_x: f32,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -483,11 +490,16 @@ impl LoadedState {
                     state.next_note_id = NoteId(state.next_note_id.0 + 1);
                     WindowContent::Note(note::Model::from_storage(note_id, note_storage, None))
                 }
-                StorageWindowContent::Spreadsheet(spreadsheet::StorageState::Saved { path }) => {
+                StorageWindowContent::Spreadsheet(spreadsheet::StorageState::Saved {
+                    path,
+                    column_widths,
+                }) => {
                     let spreadsheet_id = state.next_spreadsheet_id;
-                    let Some(spreadsheet_storage) = load_storage_window_spreadsheet(&path) else {
+                    let Some(mut spreadsheet_storage) = load_storage_window_spreadsheet(&path)
+                    else {
                         continue;
                     };
+                    spreadsheet_storage.column_widths = column_widths;
                     state.next_spreadsheet_id = SpreadsheetId(state.next_spreadsheet_id.0 + 1);
                     WindowContent::Spreadsheet(spreadsheet::Model::from_storage(
                         spreadsheet_id,
@@ -757,6 +769,21 @@ impl LoadedState {
                         };
                         ui_window.width = (ui_window.width + dx).max(MIN_WINDOW_SIZE);
                         ui_window.height = (ui_window.height + dy).max(MIN_WINDOW_SIZE);
+                        self.save_storage();
+                    }
+                    PointerInteraction::ColumnResize(state) => {
+                        let dx = x - state.last_x;
+                        state.last_x = x;
+
+                        let Some(ui_window) =
+                            self.windows.get_mut(&WindowId::from(state.spreadsheet_id))
+                        else {
+                            return;
+                        };
+                        let Ok(spreadsheet) = ui_window.spreadsheet_mut() else {
+                            return;
+                        };
+                        spreadsheet.resize_column_by(state.column, dx);
                         self.save_storage();
                     }
                 }
@@ -1639,6 +1666,28 @@ impl LoadedState {
                         spreadsheet.active_cell_field_id(),
                     ));
                 }
+                cx.notify();
+            }
+            spreadsheet::Event::PressedColumnResizeHandle { column, x } => {
+                let Some(front_window_id) =
+                    self.bring_window_to_front(WindowId::from(spreadsheet_id))
+                else {
+                    return;
+                };
+                self.active_field = self
+                    .windows
+                    .get(&front_window_id)
+                    .and_then(|window| window.spreadsheet().ok())
+                    .map(|spreadsheet| {
+                        ActiveFieldId::Spreadsheet(spreadsheet.active_cell_field_id())
+                    });
+                self.pointer_interaction = Some(PointerInteraction::ColumnResize(
+                    ColumnResizeInteractionState {
+                        spreadsheet_id,
+                        column: *column,
+                        last_x: *x,
+                    },
+                ));
                 cx.notify();
             }
             spreadsheet::Event::ClickedInsertRowAbove { row } => {
