@@ -98,6 +98,7 @@ pub enum KeyPress {
     CommandBackspace,
     Enter,
     Save,
+    Paste,
     Text(String),
 }
 
@@ -392,30 +393,42 @@ where
                 cx,
             ))
             .child(
-                gpui::div().p(s::S3).pt(s::S0).flex_1().bg(s::GRAY2).child(
-                    s::sunken(
-                        gpui::div()
-                            .flex()
-                            .flex_col()
-                            .size_full()
-                            .p(s::S3)
-                            .bg(s::GREEN2)
-                            .track_focus(focus_handle)
-                            .key_context("NoteEditor")
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(move |_, _: &MouseDownEvent, window, cx| {
-                                    window.focus(&body_focus_handle);
-                                    emitter.emit(cx, Event::PressedBodyEditor);
-                                }),
-                            )
-                            .on_key_down(cx.listener(move |_, event, _, cx| {
-                                emitted_key_event(emitter, event, cx);
-                            }))
-                            .children(render_lines(lines, show_body_cursor)),
-                    )
-                    .size_full(),
-                ),
+                gpui::div()
+                    .p(s::S3)
+                    .pt(s::S0)
+                    .flex_1()
+                    .min_h(gpui::px(0.0))
+                    .overflow_hidden()
+                    .bg(s::GRAY2)
+                    .child(
+                        s::sunken(
+                            gpui::div()
+                                .flex()
+                                .flex_col()
+                                .size_full()
+                                .id(("note-body-editor", note.id.0))
+                                .overflow_scroll()
+                                .scrollbar_width(s::S3)
+                                .p(s::S3)
+                                .bg(s::GREEN2)
+                                .track_focus(focus_handle)
+                                .key_context("NoteEditor")
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(move |_, _: &MouseDownEvent, window, cx| {
+                                        window.focus(&body_focus_handle);
+                                        cx.stop_propagation();
+                                        emitter.emit(cx, Event::PressedBodyEditor);
+                                    }),
+                                )
+                                .on_key_down(cx.listener(move |_, event, _, cx| {
+                                    emitted_key_event(emitter, event, cx);
+                                }))
+                                .children(render_lines(lines, show_body_cursor)),
+                        )
+                        .size_full()
+                        .overflow_hidden(),
+                    ),
             )
             .child(save_row(emitter, note, save_button_pressed, cx)),
     )
@@ -681,6 +694,7 @@ where
 {
     let key_press = match event.keystroke.key.as_str() {
         "s" if event.keystroke.modifiers.platform => KeyPress::Save,
+        "v" if event.keystroke.modifiers.platform => KeyPress::Paste,
         "backspace" if event.keystroke.modifiers.platform => KeyPress::CommandBackspace,
         "backspace" if event.keystroke.modifiers.alt => KeyPress::OptionBackspace,
         "backspace" => KeyPress::Backspace,

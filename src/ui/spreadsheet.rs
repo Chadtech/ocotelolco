@@ -141,6 +141,7 @@ pub enum KeyPress {
     ArrowLeft,
     ArrowRight,
     Save,
+    Paste,
     Text(String),
 }
 
@@ -369,11 +370,18 @@ impl Model {
             KeyPress::Tab | KeyPress::ArrowRight => self.move_active_cell(0, 1),
             KeyPress::ShiftTab | KeyPress::ArrowLeft => self.move_active_cell(0, -1),
             KeyPress::Save => {}
+            KeyPress::Paste => {}
             KeyPress::Text(key_char) => {
                 self.cell_mut(row, column).push_str(key_char);
                 self.started_editing();
             }
         }
+    }
+
+    pub fn paste_text(&mut self, row: usize, column: usize, text: &str) {
+        self.set_active_cell(row, column);
+        self.cell_mut(row, column).push_str(text);
+        self.started_editing();
     }
 
     fn started_editing(&mut self) {
@@ -1294,6 +1302,7 @@ where
 {
     let key_press = match event.keystroke.key.as_str() {
         "s" if event.keystroke.modifiers.platform => KeyPress::Save,
+        "v" if event.keystroke.modifiers.platform => KeyPress::Paste,
         "backspace" if event.keystroke.modifiers.platform => KeyPress::CommandBackspace,
         "backspace" if event.keystroke.modifiers.alt => KeyPress::OptionBackspace,
         "backspace" => KeyPress::Backspace,

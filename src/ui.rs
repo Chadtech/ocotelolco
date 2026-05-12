@@ -53,6 +53,10 @@ pub fn run() {
     });
 }
 
+fn clipboard_text(cx: &mut Context<Model>) -> Option<String> {
+    cx.read_from_clipboard().and_then(|item| item.text())
+}
+
 struct Model {
     focus_handle: FocusHandle,
     state: LoadingState,
@@ -874,6 +878,19 @@ impl LoadedState {
                 self.save_note(active_field.note_id, cx);
                 cx.notify();
             }
+            note::KeyPress::Paste => {
+                let Some(text) = clipboard_text(cx) else {
+                    return;
+                };
+                if let Some(note) = self
+                    .windows
+                    .get_mut(&WindowId::from(active_field.note_id))
+                    .and_then(|window| window.note_mut().ok())
+                {
+                    note.pressed_name_key(&text);
+                }
+                cx.notify();
+            }
             note::KeyPress::Text(key_char) => {
                 if let Some(note) = self
                     .windows
@@ -923,6 +940,14 @@ impl LoadedState {
             note::KeyPress::Save => {
                 let save_note = note.save();
                 self.dispatch_effect(Effect::SaveNote(save_note), cx);
+                cx.notify();
+            }
+            note::KeyPress::Paste => {
+                let Some(text) = clipboard_text(cx) else {
+                    return;
+                };
+                note.content.push_str(&text);
+                note.started_editing();
                 cx.notify();
             }
             note::KeyPress::Text(key_char) => {
@@ -1262,6 +1287,19 @@ impl LoadedState {
                 }
                 cx.notify();
             }
+            spreadsheet::KeyPress::Paste => {
+                let Some(text) = clipboard_text(cx) else {
+                    return;
+                };
+                if let Some(spreadsheet) = self
+                    .windows
+                    .get_mut(&WindowId::from(spreadsheet_id))
+                    .and_then(|window| window.spreadsheet_mut().ok())
+                {
+                    spreadsheet.pressed_name_key(&text);
+                }
+                cx.notify();
+            }
             spreadsheet::KeyPress::ShiftEnter
             | spreadsheet::KeyPress::Tab
             | spreadsheet::KeyPress::ShiftTab
@@ -1523,6 +1561,12 @@ impl LoadedState {
                     return;
                 }
 
+                let pasted_text = if matches!(key_press, spreadsheet::KeyPress::Paste) {
+                    clipboard_text(cx)
+                } else {
+                    None
+                };
+
                 let Some(spreadsheet) = self
                     .windows
                     .get_mut(&WindowId::from(spreadsheet_id))
@@ -1532,7 +1576,11 @@ impl LoadedState {
                     return;
                 };
 
-                spreadsheet.pressed_key(active_cell.row, active_cell.column, key_press);
+                if let Some(text) = pasted_text {
+                    spreadsheet.paste_text(active_cell.row, active_cell.column, &text);
+                } else {
+                    spreadsheet.pressed_key(active_cell.row, active_cell.column, key_press);
+                }
                 self.active_field = Some(ActiveFieldId::Spreadsheet(
                     spreadsheet.active_cell_field_id(),
                 ));
