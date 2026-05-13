@@ -65,6 +65,9 @@ pub enum RenamingState {
 pub enum ButtonId {
     Rename,
     Save,
+    Delete,
+    ConfirmDelete,
+    CancelDelete,
     X,
 }
 
@@ -77,6 +80,9 @@ pub enum Event {
     ClickedRename,
     ClickedSaveName,
     ClickedSaveButton,
+    ClickedDeleteButton,
+    ClickedConfirmDeleteButton,
+    ClickedCancelDeleteButton,
     ClickedCloseButton,
     PressedButton { button_id: ButtonId },
     ReleasedButton,
@@ -93,6 +99,10 @@ pub struct SaveRequest {
     pub note_id: NoteId,
     pub generation: u64,
     storage: Storage,
+}
+
+pub struct DeleteRequest {
+    path: Option<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -159,6 +169,12 @@ impl Model {
 
     pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()
+    }
+
+    pub fn delete_request(&self) -> DeleteRequest {
+        DeleteRequest {
+            path: self.path.clone(),
+        }
     }
 
     pub fn name_field_id(&self) -> FieldId {
@@ -477,6 +493,18 @@ pub fn save_note_file(save_request: SaveRequest) -> io::Result<PathBuf> {
     Ok(path)
 }
 
+pub fn delete_note_file(delete_request: DeleteRequest) -> io::Result<()> {
+    let Some(path) = delete_request.path else {
+        return Ok(());
+    };
+
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
 pub fn load_note_file(path: &Path) -> io::Result<Storage> {
     let contents = std::fs::read_to_string(path)?;
     serde_json::from_str(&contents).map_err(io::Error::other)
@@ -530,6 +558,15 @@ where
     let close_button_pressed = pressed_button == Some(&ButtonId::X);
     let save_button_pressed = pressed_button == Some(&ButtonId::Save);
     let rename_button_pressed = pressed_button == Some(&ButtonId::Rename);
+    let delete_button_pressed = pressed_button == Some(&ButtonId::Delete);
+    let confirm_delete_button_pressed = pressed_button == Some(&ButtonId::ConfirmDelete);
+    let cancel_delete_button_pressed = pressed_button == Some(&ButtonId::CancelDelete);
+    let confirm_delete = pressed_button.is_some_and(|button_id| {
+        matches!(
+            button_id,
+            ButtonId::Delete | ButtonId::ConfirmDelete | ButtonId::CancelDelete
+        )
+    });
 
     s::raised(
         gpui::div()
@@ -613,7 +650,16 @@ where
                         .overflow_hidden(),
                     ),
             )
-            .child(save_row(emitter, note, save_button_pressed, cx)),
+            .child(action_row(
+                emitter,
+                note,
+                save_button_pressed,
+                delete_button_pressed,
+                confirm_delete_button_pressed,
+                cancel_delete_button_pressed,
+                confirm_delete,
+                cx,
+            )),
     )
     .child(resize_handle(emitter, focus_handle, cx))
 }
@@ -635,10 +681,14 @@ impl IdEmitter {
     }
 }
 
-fn save_row<T>(
+fn action_row<T>(
     emitter: IdEmitter,
     note: &Model,
-    pressed: bool,
+    save_button_pressed: bool,
+    delete_button_pressed: bool,
+    confirm_delete_button_pressed: bool,
+    cancel_delete_button_pressed: bool,
+    confirm_delete: bool,
     cx: &mut Context<T>,
 ) -> impl IntoElement
 where
@@ -649,6 +699,130 @@ where
         SaveState::Saving => "saving...",
         SaveState::Saved => "saved",
         SaveState::Failed => "save failed",
+    };
+
+    let actions = if confirm_delete {
+        gpui::div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(
+                view::button::from_text("cancel", cancel_delete_button_pressed)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |_, _: &MouseDownEvent, _, cx| {
+                            cx.stop_propagation();
+                            emitter.emit(
+                                cx,
+                                Event::PressedButton {
+                                    button_id: ButtonId::CancelDelete,
+                                },
+                            );
+                        }),
+                    )
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(move |_, _: &MouseUpEvent, _, cx| {
+                            cx.stop_propagation();
+                            emitter.emit(cx, Event::ClickedCancelDeleteButton);
+                        }),
+                    )
+                    .on_mouse_up_out(
+                        MouseButton::Left,
+                        cx.listener(move |_, _: &MouseUpEvent, _, cx| {
+                            emitter.emit(cx, Event::ReleasedButton);
+                        }),
+                    ),
+            )
+            .child(
+                view::button::from_text("delete forever", confirm_delete_button_pressed)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |_, _: &MouseDownEvent, _, cx| {
+                            cx.stop_propagation();
+                            emitter.emit(
+                                cx,
+                                Event::PressedButton {
+                                    button_id: ButtonId::ConfirmDelete,
+                                },
+                            );
+                        }),
+                    )
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(move |_, _: &MouseUpEvent, _, cx| {
+                            cx.stop_propagation();
+                            emitter.emit(cx, Event::ClickedConfirmDeleteButton);
+                        }),
+                    )
+                    .on_mouse_up_out(
+                        MouseButton::Left,
+                        cx.listener(move |_, _: &MouseUpEvent, _, cx| {
+                            emitter.emit(cx, Event::ReleasedButton);
+                        }),
+                    ),
+            )
+    } else {
+        gpui::div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(
+                view::button::from_text("delete", delete_button_pressed)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |_, _: &MouseDownEvent, _, cx| {
+                            cx.stop_propagation();
+                            emitter.emit(
+                                cx,
+                                Event::PressedButton {
+                                    button_id: ButtonId::Delete,
+                                },
+                            );
+                        }),
+                    )
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(move |_, _: &MouseUpEvent, _, cx| {
+                            cx.stop_propagation();
+                            emitter.emit(cx, Event::ClickedDeleteButton);
+                        }),
+                    )
+                    .on_mouse_up_out(
+                        MouseButton::Left,
+                        cx.listener(move |_, _: &MouseUpEvent, _, cx| {
+                            emitter.emit(cx, Event::ReleasedButton);
+                        }),
+                    ),
+            )
+            .child(
+                view::button::from_text("save", save_button_pressed)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |_, _: &MouseDownEvent, _, cx| {
+                            cx.stop_propagation();
+                            emitter.emit(
+                                cx,
+                                Event::PressedButton {
+                                    button_id: ButtonId::Save,
+                                },
+                            );
+                        }),
+                    )
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(move |_, _: &MouseUpEvent, _, cx| {
+                            cx.stop_propagation();
+                            emitter.emit(cx, Event::ClickedSaveButton);
+                        }),
+                    )
+                    .on_mouse_up_out(
+                        MouseButton::Left,
+                        cx.listener(move |_, _: &MouseUpEvent, _, cx| {
+                            emitter.emit(cx, Event::ReleasedButton);
+                        }),
+                    ),
+            )
     };
 
     gpui::div()
@@ -665,34 +839,7 @@ where
                 .text_color(s::YELLOW3)
                 .child(status),
         )
-        .child(
-            view::button::from_text("save", pressed)
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |_, _: &MouseDownEvent, _, cx| {
-                        cx.stop_propagation();
-                        emitter.emit(
-                            cx,
-                            Event::PressedButton {
-                                button_id: ButtonId::Save,
-                            },
-                        );
-                    }),
-                )
-                .on_mouse_up(
-                    MouseButton::Left,
-                    cx.listener(move |_, _: &MouseUpEvent, _, cx| {
-                        cx.stop_propagation();
-                        emitter.emit(cx, Event::ClickedSaveButton);
-                    }),
-                )
-                .on_mouse_up_out(
-                    MouseButton::Left,
-                    cx.listener(move |_, _: &MouseUpEvent, _, cx| {
-                        emitter.emit(cx, Event::ReleasedButton);
-                    }),
-                ),
-        )
+        .child(actions)
 }
 
 fn rename_row<T>(

@@ -1288,6 +1288,66 @@ impl LoadedState {
                 self.save_note(note_id, cx);
                 cx.notify();
             }
+            note::Event::ClickedDeleteButton => {
+                let Some(front_window_id) = self.bring_window_to_front(WindowId::from(note_id))
+                else {
+                    return;
+                };
+                let Some(front_note_id) = front_window_id.note_id() else {
+                    return;
+                };
+                self.pressed_button = Some(ButtonId::NoteButtonId {
+                    note_id: front_note_id,
+                    button_id: note::ButtonId::Delete,
+                });
+                cx.notify();
+            }
+            note::Event::ClickedCancelDeleteButton => {
+                self.pressed_button = None;
+                cx.notify();
+            }
+            note::Event::ClickedConfirmDeleteButton => {
+                let Some(front_window_id) = self.bring_window_to_front(WindowId::from(note_id))
+                else {
+                    return;
+                };
+                let delete_request = self
+                    .windows
+                    .get(&front_window_id)
+                    .and_then(|window| window.note().ok())
+                    .map(note::Model::delete_request);
+                let Some(delete_request) = delete_request else {
+                    return;
+                };
+
+                if let Err(error) = note::delete_note_file(delete_request) {
+                    eprintln!("failed to delete note {}: {error}", note_id.0);
+                    self.pressed_button = None;
+                    cx.notify();
+                    return;
+                }
+
+                if let Some(deleted_note) = self
+                    .windows
+                    .get(&front_window_id)
+                    .and_then(|window| window.note().ok())
+                {
+                    if self.active_field == Some(ActiveFieldId::Note(deleted_note.name_field_id()))
+                        || self.active_field
+                            == Some(ActiveFieldId::Note(deleted_note.body_field_id()))
+                    {
+                        self.active_field = None;
+                    }
+                }
+                self.pressed_button = None;
+                self.windows.remove(&front_window_id);
+                self.window_order
+                    .retain(|ordered_window_id| *ordered_window_id != front_window_id);
+                self.pointer_interaction = None;
+                self.refresh_note_picker();
+                self.save_storage();
+                cx.notify();
+            }
             note::Event::ClickedCloseButton => {
                 let Some(front_window_id) = self.bring_window_to_front(WindowId::from(note_id))
                 else {
@@ -1769,6 +1829,71 @@ impl LoadedState {
             spreadsheet::Event::ClickedSaveButton => {
                 self.pressed_button = None;
                 self.save_spreadsheet(spreadsheet_id, cx);
+                cx.notify();
+            }
+            spreadsheet::Event::ClickedDeleteButton => {
+                let Some(front_window_id) =
+                    self.bring_window_to_front(WindowId::from(spreadsheet_id))
+                else {
+                    return;
+                };
+                let Some(front_spreadsheet_id) = front_window_id.spreadsheet_id() else {
+                    return;
+                };
+                self.pressed_button = Some(ButtonId::SpreadsheetButtonId {
+                    spreadsheet_id: front_spreadsheet_id,
+                    button_id: spreadsheet::ButtonId::Delete,
+                });
+                cx.notify();
+            }
+            spreadsheet::Event::ClickedCancelDeleteButton => {
+                self.pressed_button = None;
+                cx.notify();
+            }
+            spreadsheet::Event::ClickedConfirmDeleteButton => {
+                let Some(front_window_id) =
+                    self.bring_window_to_front(WindowId::from(spreadsheet_id))
+                else {
+                    return;
+                };
+                let delete_request = self
+                    .windows
+                    .get(&front_window_id)
+                    .and_then(|window| window.spreadsheet().ok())
+                    .map(spreadsheet::Model::delete_request);
+                let Some(delete_request) = delete_request else {
+                    return;
+                };
+
+                if let Err(error) = spreadsheet::delete_spreadsheet_file(delete_request) {
+                    eprintln!("failed to delete spreadsheet {}: {error}", spreadsheet_id.0);
+                    self.pressed_button = None;
+                    cx.notify();
+                    return;
+                }
+
+                if let Some(deleted_spreadsheet) = self
+                    .windows
+                    .get(&front_window_id)
+                    .and_then(|window| window.spreadsheet().ok())
+                {
+                    if matches!(
+                        &self.active_field,
+                        Some(ActiveFieldId::Spreadsheet(cell))
+                            if cell.spreadsheet_id == deleted_spreadsheet.id
+                    ) || self.active_field
+                        == Some(ActiveFieldId::SpreadsheetName(deleted_spreadsheet.id))
+                    {
+                        self.active_field = None;
+                    }
+                }
+                self.pressed_button = None;
+                self.windows.remove(&front_window_id);
+                self.window_order
+                    .retain(|ordered_window_id| *ordered_window_id != front_window_id);
+                self.pointer_interaction = None;
+                self.refresh_spreadsheet_picker();
+                self.save_storage();
                 cx.notify();
             }
             spreadsheet::Event::ClickedCloseButton => {
