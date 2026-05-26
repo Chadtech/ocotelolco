@@ -20,6 +20,36 @@ pub struct Analysis {
     pub unmatched_sell_count: usize,
 }
 
+#[derive(Debug)]
+pub struct TagAnalysis {
+    pub source_file: PathBuf,
+    pub tagged_ticker_count: usize,
+    pub untagged_summaries: Vec<TickerSummary>,
+    pub tags: Vec<TagSummary>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TagSummary {
+    pub tag: String,
+    pub ticker_count: usize,
+    pub realized_ticker_count: usize,
+    pub matched_cost: f64,
+    pub total_gain: f64,
+    pub income: f64,
+    pub open_cost: f64,
+    pub tickers: Vec<String>,
+}
+
+impl TagSummary {
+    pub fn realized_return(&self) -> Option<f64> {
+        if self.matched_cost > 0.0 {
+            Some(self.total_gain / self.matched_cost)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TickerSummary {
     pub symbol: String,
@@ -91,6 +121,17 @@ struct TickerAccumulator {
     unmatched_sell_quantity: f64,
 }
 
+#[derive(Default)]
+struct TagAccumulator {
+    ticker_count: usize,
+    realized_ticker_count: usize,
+    matched_cost: f64,
+    total_gain: f64,
+    income: f64,
+    open_cost: f64,
+    tickers: Vec<String>,
+}
+
 struct IncomeParseResult {
     records: Vec<IncomeRecord>,
 }
@@ -114,6 +155,7 @@ enum IncomeActivity {
 enum CsvFileKind {
     Transactions,
     InvestmentIncome,
+    Unsupported,
 }
 
 pub fn analyze_default_data_dir() -> io::Result<Analysis> {
@@ -131,6 +173,40 @@ pub fn print_cli_report() -> io::Result<()> {
     Ok(())
 }
 
+pub fn print_tag_cli_report(returns_only: bool) -> io::Result<()> {
+    let analysis = analyze_default_data_dir()?;
+    let tag_analysis = analyze_default_ticker_tags(&analysis)?;
+    let report = if returns_only {
+        render_tag_returns_report(&tag_analysis)
+    } else {
+        render_tag_report(&tag_analysis)
+    };
+    print!("{report}");
+
+    if !returns_only {
+        let output_path = write_default_tag_report(&report)?;
+        println!("Wrote report to {}", output_path.display());
+    }
+
+    Ok(())
+}
+
+pub fn analyze_default_ticker_tags(analysis: &Analysis) -> io::Result<TagAnalysis> {
+    analyze_ticker_tags(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("spreadsheets/ticker-tags.csv"),
+        analysis,
+    )
+}
+
+pub fn analyze_ticker_tags(path: impl AsRef<Path>, analysis: &Analysis) -> io::Result<TagAnalysis> {
+    let ticker_tags = read_ticker_tags(path.as_ref())?;
+    Ok(aggregate_ticker_tags(
+        path.as_ref().to_path_buf(),
+        ticker_tags,
+        analysis,
+    ))
+}
+
 fn write_default_report(report: &str) -> io::Result<PathBuf> {
     let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("outputs");
     fs::create_dir_all(&output_dir)?;
@@ -140,11 +216,97 @@ fn write_default_report(report: &str) -> io::Result<PathBuf> {
     Ok(output_path)
 }
 
+fn write_default_tag_report(report: &str) -> io::Result<PathBuf> {
+    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("outputs");
+    fs::create_dir_all(&output_dir)?;
+
+    let output_path = output_dir.join(format!("ticker-tag-analysis-{}.txt", unix_timestamp()?));
+    fs::write(&output_path, report)?;
+    Ok(output_path)
+}
+
 fn unix_timestamp() -> io::Result<u64> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .map_err(io::Error::other)
+}
+
+fn render_tag_report(analysis: &TagAnalysis) -> String {
+    let mut report = String::new();
+    push_report_line(
+        &mut report,
+        format_args!(
+            "Analyzed {} tag(s) from {} tagged ticker(s) in {}",
+            analysis.tags.len(),
+            analysis.tagged_ticker_count,
+            analysis.source_file.display()
+        ),
+    );
+    if !analysis.untagged_summaries.is_empty() {
+        push_report_line(
+            &mut report,
+            format_args!(
+                "Found {} analyzed ticker(s) with no tag row: {}",
+                analysis.untagged_summaries.len(),
+                analysis
+                    .untagged_summaries
+                    .iter()
+                    .map(|summary| summary.symbol.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        );
+    }
+    report.push('\n');
+    push_report_line(
+        &mut report,
+        format_args!(
+            "{:<18} {:>12} {:>12} {:>14} {:>12} {:>12} {:>10}  {}",
+            "Tag", "Return", "P/L", "Realized Cost", "Income", "Open Cost", "Tickers", "Members"
+        ),
+    );
+
+    for tag in &analysis.tags {
+        push_report_line(
+            &mut report,
+            format_args!(
+                "{:<18} {:>12} {:>12} {:>14} {:>12} {:>12} {:>10}  {}",
+                tag.tag,
+                tag.realized_return()
+                    .map(percent)
+                    .unwrap_or_else(|| "n/a".to_string()),
+                money(tag.total_gain),
+                money(tag.matched_cost),
+                money(tag.income),
+                money(tag.open_cost),
+                format!("{}/{}", tag.realized_ticker_count, tag.ticker_count),
+                tag.tickers.join(", ")
+            ),
+        );
+    }
+
+    report
+}
+
+fn render_tag_returns_report(analysis: &TagAnalysis) -> String {
+    let mut report = String::new();
+    push_report_line(&mut report, format_args!("{:<18} {:>12}", "Tag", "Return"));
+
+    for tag in &analysis.tags {
+        push_report_line(
+            &mut report,
+            format_args!(
+                "{:<18} {:>12}",
+                tag.tag,
+                tag.realized_return()
+                    .map(percent)
+                    .unwrap_or_else(|| "n/a".to_string())
+            ),
+        );
+    }
+
+    report
 }
 
 fn render_report(analysis: &Analysis) -> String {
@@ -307,6 +469,131 @@ fn render_report(analysis: &Analysis) -> String {
     report
 }
 
+fn aggregate_ticker_tags(
+    source_file: PathBuf,
+    ticker_tags: HashMap<String, Vec<String>>,
+    analysis: &Analysis,
+) -> TagAnalysis {
+    let mut tags_by_name: HashMap<String, TagAccumulator> = HashMap::new();
+    let mut tagged_summaries = HashSet::new();
+
+    for summary in &analysis.summaries {
+        let Some(tags) = ticker_tags.get(&summary.symbol) else {
+            continue;
+        };
+
+        tagged_summaries.insert(summary.symbol.clone());
+        for tag in tags {
+            let tag_summary = tags_by_name.entry(tag.clone()).or_default();
+            tag_summary.ticker_count += 1;
+            tag_summary.open_cost += summary.open_cost;
+            tag_summary.tickers.push(summary.symbol.clone());
+            if summary.is_closed_performance() {
+                tag_summary.realized_ticker_count += 1;
+                tag_summary.matched_cost += summary.matched_cost;
+                tag_summary.total_gain += summary.total_gain();
+                tag_summary.income += summary.income;
+            }
+        }
+    }
+
+    let mut tags = tags_by_name
+        .into_iter()
+        .map(|(tag, mut summary)| {
+            summary.tickers.sort();
+            TagSummary {
+                tag,
+                ticker_count: summary.ticker_count,
+                realized_ticker_count: summary.realized_ticker_count,
+                matched_cost: summary.matched_cost,
+                total_gain: summary.total_gain,
+                income: summary.income,
+                open_cost: summary.open_cost,
+                tickers: summary.tickers,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    tags.sort_by(|left, right| {
+        right
+            .realized_return()
+            .unwrap_or(f64::NEG_INFINITY)
+            .total_cmp(&left.realized_return().unwrap_or(f64::NEG_INFINITY))
+            .then(left.tag.cmp(&right.tag))
+    });
+
+    let mut untagged_summaries = analysis
+        .summaries
+        .iter()
+        .filter(|summary| !tagged_summaries.contains(&summary.symbol))
+        .cloned()
+        .collect::<Vec<_>>();
+    untagged_summaries.sort_by(|left, right| left.symbol.cmp(&right.symbol));
+
+    TagAnalysis {
+        source_file,
+        tagged_ticker_count: ticker_tags.len(),
+        untagged_summaries,
+        tags,
+    }
+}
+
+fn read_ticker_tags(path: &Path) -> io::Result<HashMap<String, Vec<String>>> {
+    let contents = fs::read_to_string(path)?;
+    let mut lines = contents.lines();
+    let Some(header_line) = lines.next() else {
+        return Ok(HashMap::new());
+    };
+    let header =
+        parse_csv_row(header_line).map_err(|error| invalid_csv(path, 1, "header", error))?;
+    let ticker_index = header
+        .iter()
+        .position(|field| field.eq_ignore_ascii_case("ticker"))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("{} is missing ticker column", path.display()),
+            )
+        })?;
+    let tags_index = header
+        .iter()
+        .position(|field| field.eq_ignore_ascii_case("tags"))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("{} is missing tags column", path.display()),
+            )
+        })?;
+
+    let mut ticker_tags = HashMap::new();
+    for (row_index, row) in lines.enumerate() {
+        if row.trim().is_empty() {
+            continue;
+        }
+        let line_number = row_index + 2;
+        let fields =
+            parse_csv_row(row).map_err(|error| invalid_csv(path, line_number, "row", error))?;
+        let ticker = get_field(&fields, ticker_index, "ticker")
+            .map_err(|error| invalid_csv(path, line_number, "ticker", error))?
+            .trim()
+            .to_string();
+        if ticker.is_empty() {
+            continue;
+        }
+
+        let tags = get_field(&fields, tags_index, "tags")
+            .map_err(|error| invalid_csv(path, line_number, "tags", error))?
+            .split(',')
+            .map(str::trim)
+            .filter(|tag| !tag.is_empty())
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>();
+        ticker_tags.insert(ticker, tags);
+    }
+
+    Ok(ticker_tags)
+}
+
 fn push_report_line(report: &mut String, arguments: std::fmt::Arguments<'_>) {
     use std::fmt::Write as _;
 
@@ -343,6 +630,7 @@ pub fn analyze_data_dir(path: impl AsRef<Path>) -> io::Result<Analysis> {
                 income_records.extend(income.records);
                 income_source_files.push(source_file.clone());
             }
+            CsvFileKind::Unsupported => {}
         }
     }
     let IncomeAggregation {
@@ -553,6 +841,13 @@ fn classify_csv_file(path: &Path) -> io::Result<CsvFileKind> {
         .is_some_and(|field| field.starts_with("Investment Income Transactions"))
     {
         return Ok(CsvFileKind::InvestmentIncome);
+    }
+    if first_row
+        .first()
+        .is_some_and(|field| field.starts_with("Balances for account"))
+        || (first_row.len() == 2 && row_has_columns(&first_row, &["Date", "Amount"]))
+    {
+        return Ok(CsvFileKind::Unsupported);
     }
 
     let Some(second_line) = lines.next() else {
@@ -1114,6 +1409,42 @@ mod tests {
     }
 
     #[test]
+    fn skips_schwab_balance_exports_when_analyzing_directory() {
+        let directory = std::env::temp_dir().join(format!(
+            "ocotelolco-import-test-{}-{}",
+            std::process::id(),
+            unix_timestamp().unwrap()
+        ));
+        fs::create_dir_all(directory.join("balances")).unwrap();
+        fs::write(
+            directory.join("transactions.csv"),
+            "\"Date\",\"Action\",\"Symbol\",\"Description\",\"Quantity\",\"Price\",\"Fees & Comm\",\"Amount\"\n\
+             \"04/28/2026\",\"Buy\",\"VTI\",\"ETF\",\"1\",\"$100.00\",\"\",\"-$100.00\"\n",
+        )
+        .unwrap();
+        fs::write(
+            directory.join("balances").join("summary.csv"),
+            "\"Balances for account  XXXX-2061 as of 05/14/2026 05:31 PM ET\"\n\
+             Account Value,\"$8,539.70\"\n",
+        )
+        .unwrap();
+        fs::write(
+            directory.join("balances").join("history.csv"),
+            "Date,Amount\n\
+             \"5/14/2026\",\"$8,539.70\"\n",
+        )
+        .unwrap();
+
+        let analysis = analyze_data_dir(&directory).unwrap();
+        fs::remove_dir_all(directory).unwrap();
+
+        assert_eq!(analysis.transaction_count, 1);
+        assert_eq!(analysis.transaction_source_files.len(), 1);
+        assert_eq!(analysis.income_source_files.len(), 0);
+        assert_eq!(analysis.source_files.len(), 3);
+    }
+
+    #[test]
     fn calculates_fifo_realized_performance() {
         let transactions = vec![
             transaction(1, Action::Buy, "ABC", 10.0, -100.0),
@@ -1209,6 +1540,115 @@ mod tests {
         assert_eq!(xyz.income, 3.0);
         assert_eq!(xyz.realized_return(), None);
         assert_eq!(xyz.open_quantity, 4.0);
+    }
+
+    #[test]
+    fn parses_ticker_tags_with_quoted_tag_lists() {
+        let path =
+            std::env::temp_dir().join(format!("ocotelolco-tags-test-{}.csv", std::process::id()));
+        fs::write(
+            &path,
+            "ticker,tags,,,,\n\
+             ABC,\"tech, retreat\",,,,\n\
+             XYZ,tariffs,,,,\n\
+             ,,,,,\n",
+        )
+        .unwrap();
+
+        let ticker_tags = read_ticker_tags(&path).unwrap();
+        fs::remove_file(path).unwrap();
+
+        assert_eq!(
+            ticker_tags.get("ABC").unwrap(),
+            &vec!["tech".to_string(), "retreat".to_string()]
+        );
+        assert_eq!(ticker_tags.get("XYZ"), Some(&vec!["tariffs".to_string()]));
+        assert!(!ticker_tags.contains_key(""));
+    }
+
+    #[test]
+    fn aggregates_ticker_performance_by_tag() {
+        let transactions = vec![
+            transaction(1, Action::Buy, "ABC", 10.0, -100.0),
+            transaction(2, Action::Sell, "ABC", 10.0, 120.0),
+            transaction(3, Action::Buy, "XYZ", 10.0, -200.0),
+            transaction(4, Action::Sell, "XYZ", 5.0, 90.0),
+            transaction(5, Action::Buy, "OPEN", 3.0, -30.0),
+        ];
+        let mut income = HashMap::new();
+        income.insert("ABC".to_string(), 5.0);
+        let analysis = analyze_test_transactions(transactions, income);
+
+        let tag_analysis = aggregate_ticker_tags(
+            PathBuf::from("ticker-tags.csv"),
+            HashMap::from([
+                (
+                    "ABC".to_string(),
+                    vec!["shared".to_string(), "winner".to_string()],
+                ),
+                ("XYZ".to_string(), vec!["shared".to_string()]),
+                ("OPEN".to_string(), vec!["open".to_string()]),
+            ]),
+            &analysis,
+        );
+
+        let shared = tag_analysis
+            .tags
+            .iter()
+            .find(|summary| summary.tag == "shared")
+            .unwrap();
+        assert_eq!(shared.ticker_count, 2);
+        assert_eq!(shared.realized_ticker_count, 2);
+        assert_eq!(shared.matched_cost, 200.0);
+        assert_eq!(shared.total_gain, 15.0);
+        assert_eq!(shared.income, 5.0);
+        assert_eq!(shared.realized_return(), Some(0.075));
+
+        let open = tag_analysis
+            .tags
+            .iter()
+            .find(|summary| summary.tag == "open")
+            .unwrap();
+        assert_eq!(open.realized_return(), None);
+        assert_eq!(open.open_cost, 30.0);
+    }
+
+    #[test]
+    fn renders_tag_returns_only_report() {
+        let report = render_tag_returns_report(&TagAnalysis {
+            source_file: PathBuf::from("ticker-tags.csv"),
+            tagged_ticker_count: 2,
+            untagged_summaries: Vec::new(),
+            tags: vec![
+                TagSummary {
+                    tag: "winner".to_string(),
+                    ticker_count: 1,
+                    realized_ticker_count: 1,
+                    matched_cost: 100.0,
+                    total_gain: 7.5,
+                    income: 0.0,
+                    open_cost: 0.0,
+                    tickers: vec!["ABC".to_string()],
+                },
+                TagSummary {
+                    tag: "open".to_string(),
+                    ticker_count: 1,
+                    realized_ticker_count: 0,
+                    matched_cost: 0.0,
+                    total_gain: 0.0,
+                    income: 0.0,
+                    open_cost: 50.0,
+                    tickers: vec!["XYZ".to_string()],
+                },
+            ],
+        });
+
+        assert_eq!(
+            report,
+            "Tag                      Return\n\
+             winner                     7.5%\n\
+             open                        n/a\n"
+        );
     }
 
     fn analyze_test_transactions(

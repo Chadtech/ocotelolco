@@ -9,6 +9,7 @@ imports/**/*.csv
 imports/**/*.CSV
 !imports/.gitkeep
 !imports/**/.gitkeep
+spreadsheets/*
 outputs/*
 !outputs/.gitkeep
 
