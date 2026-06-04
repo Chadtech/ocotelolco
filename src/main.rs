@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+mod palette;
 mod transactions;
 mod ui;
 mod website;

@@ -7,6 +7,8 @@ use std::{
 
 use serde::Serialize;
 
+use crate::palette;
+
 const PERFORMANCE_START: Date = Date::new(2025, 10, 28);
 const PERFORMANCE_END: Date = Date::new(2026, 4, 28);
 
@@ -411,25 +413,28 @@ fn percent(value: f64) -> String {
     format!("{value:.2}%")
 }
 
-const SITE_CSS: &str = r##"
-    :root {
-      color-scheme: dark;
-      --green-1: #030907;
-      --green-2: #071d10;
-      --green-3: #082208;
-      --green-7: #0aca1a;
-      --gray-1: #131610;
-      --gray-2: #2c2826;
-      --gray-3: #57524f;
-      --gray-5: #b0a69a;
-      --gray-6: #e0d6ca;
-      --yellow-6: #e3d34b;
-      --chart-account: var(--yellow-6);
+fn site_css() -> String {
+    let mut css = String::from("\n    :root {\n      color-scheme: dark;\n");
+    for (name, color) in palette::CSS_COLORS {
+        css.push_str("      --");
+        css.push_str(name);
+        css.push_str(": ");
+        css.push_str(&color.css());
+        css.push_str(";\n");
+    }
+    css.push_str(
+        r##"      --chart-account: var(--yellow-6);
       --chart-index: var(--gray-6);
-      --chart-axis: #b0a69a;
+      --chart-axis: var(--gray-5);
       --chart-zero: var(--gray-5);
     }
+"##,
+    );
+    css.push_str(SITE_CSS_RULES);
+    css
+}
 
+const SITE_CSS_RULES: &str = r##"
     * {
       box-sizing: border-box;
     }
@@ -789,7 +794,7 @@ fn site_head() -> Node {
                 Vec::new(),
             ),
             element("title", Vec::new(), vec![Node::text("Ocotelolco")]),
-            element("style", Vec::new(), vec![Node::raw_text(SITE_CSS)]),
+            element("style", Vec::new(), vec![Node::raw_text(site_css())]),
         ],
     )
 }
@@ -1340,6 +1345,15 @@ mod tests {
             html,
             r#"<a href="https://example.com?name=S&amp;P 500&amp;label=&quot;next&quot;">S&amp;P 500 &lt;returns&gt;</a>"#
         );
+    }
+
+    #[test]
+    fn website_css_uses_shared_palette() {
+        let css = site_css();
+
+        for (name, color) in palette::CSS_COLORS {
+            assert!(css.contains(&format!("--{name}: {};", color.css())));
+        }
     }
 
     #[test]
