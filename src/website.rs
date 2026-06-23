@@ -24,12 +24,26 @@ const PERFORMANCE_START: Date = Date::new(2025, 10, 28);
 const PERFORMANCE_END: Date = Date::new(2026, 4, 28);
 const CONTENT_COPY: &str = "w-full max-w-none text-gray-5 text-base break-anywhere";
 const OVERVIEW_PANEL: &str = "min-w-0 bg-green-2 p-3 text-base edge-inset";
+const OVERVIEW_GRID: &str = "grid grid-cols-2 gap-2 max-md:grid-cols-1";
+const METRIC_GRID: &str = "grid grid-cols-2 gap-2 max-md:grid-cols-1";
+const METRIC_BOX: &str = "grid min-w-0 items-center bg-green-2 edge-inset p-3";
+const METRIC_PRIMARY: &str =
+    "col-span-full grid-cols-1 justify-items-center gap-2-5 py-4 text-center max-md:col-span-1";
+const METRIC_SECONDARY: &str = "grid-cols-max justify-center gap-4";
+const METRIC_LABEL: &str = "text-base text-gray-5";
+const METRIC_VALUE: &str = "text-base text-gray-6 whitespace-nowrap";
 const THESIS_TABLE: &str = "grid bg-green-2 edge-inset";
-const THESIS_ROW: &str = "thesis-row bg-green-2";
-const THESIS_HEADER: &str = "thesis-row bg-table-header text-gray-5";
+const THESIS_ROW: &str =
+    "grid grid-cols-thesis items-start gap-3 min-w-0 p-3 text-base max-md:grid-cols-1";
+const THESIS_HEADER: &str =
+    "grid grid-cols-thesis items-start gap-3 min-w-0 bg-table-header p-3 text-base text-gray-5 max-md:grid-cols-1";
 const THESIS_RETURN: &str = "text-base text-right whitespace-nowrap max-md:text-left";
 const DETAIL_LIST: &str = "grid gap-1-5";
 const DETAIL_SECTION: &str = "bg-gray-2 edge-outline";
+const DETAIL_SUMMARY: &str =
+    "detail-summary grid grid-cols-detail items-center gap-3 p-3 text-base max-md:grid-cols-1";
+const DETAIL_CONTENT: &str = "grid gap-3 bg-gray-2 px-3 py-4";
+const DETAIL_SUBSECTION: &str = "grid gap-2 pt-1";
 const DETAIL_TITLE: &str = "text-gray-6";
 const DETAIL_TEASER: &str = "text-gray-5 text-sm";
 const DETAIL_ACTION: &str = "justify-self-end min-w-detail-action bg-gray-2 text-gray-5 text-center whitespace-nowrap edge-outset px-2 py-1 max-md:justify-self-start";
@@ -491,14 +505,6 @@ fn favicon_data_uri() -> String {
 const SITE_CSS_RULES: &str = r##"
     * {
       box-sizing: border-box;
-    }
-
-    h1,
-    h2,
-    h3,
-    p,
-    ol,
-    ul {
       margin: 0;
     }
 
@@ -512,7 +518,6 @@ const SITE_CSS_RULES: &str = r##"
     }
 
     body {
-      margin: 0;
       min-height: 100vh;
       color: var(--gray-6);
       background: var(--green-3);
@@ -530,15 +535,6 @@ const SITE_CSS_RULES: &str = r##"
       background: url("../ocotelolco_bg.png") center / cover;
       content: "";
       opacity: 0.34;
-    }
-
-    .site-banner {
-      height: clamp(6.25rem, 24vw, 11.666667rem);
-      object-fit: cover;
-      object-position: center;
-    }
-    .site-subheader {
-      overflow-wrap: anywhere;
     }
 
     a {
@@ -563,14 +559,24 @@ const SITE_CSS_RULES: &str = r##"
     .flex-none { flex: none; }
     .items-center { align-items: center; }
     .items-start { align-items: start; }
+    .justify-center { justify-content: center; }
+    .justify-items-center { justify-items: center; }
     .justify-self-end { justify-self: end; }
     .grid-cols-1 { grid-template-columns: minmax(0, 1fr); }
+    .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-cols-max { grid-template-columns: max-content max-content; }
+    .grid-cols-thesis { grid-template-columns: minmax(0, 1fr) minmax(3.666667rem, max-content); }
+    .grid-cols-detail { grid-template-columns: minmax(7.5rem, 0.34fr) minmax(0, 1fr) max-content; }
     .grid-cols-return { grid-template-columns: 1fr minmax(4.583333rem, max-content); }
+    .col-span-full { grid-column: 1 / -1; }
     .w-full { width: 100%; }
+    .h-auto { height: auto; }
+    .h-banner { height: clamp(6.25rem, 24vw, 11.666667rem); }
     .max-w-window { max-width: 46.666667rem; }
     .max-w-copy { max-width: 70ch; }
     .max-w-none { max-width: none; }
     .min-w-0 { min-width: 0; }
+    .min-w-chart { min-width: 38.333333rem; }
     .min-w-detail-action { min-width: 3.833333rem; }
     .min-h-screen { min-height: 100vh; }
     .min-h-window { min-height: min(30rem, calc(100vh - 2.666667rem)); }
@@ -597,19 +603,25 @@ const SITE_CSS_RULES: &str = r##"
     .py-1 { padding-top: 0.166667rem; padding-bottom: 0.166667rem; }
     .py-2 { padding-top: 0.333333rem; padding-bottom: 0.333333rem; }
     .py-4 { padding-top: 0.666667rem; padding-bottom: 0.666667rem; }
+    .pt-1 { padding-top: 0.166667rem; }
     .gap-1 { gap: 0.166667rem; }
     .gap-2 { gap: 0.333333rem; }
+    .gap-2-5 { gap: 0.416667rem; }
+    .gap-3 { gap: 0.5rem; }
     .gap-4 { gap: 0.666667rem; }
     .gap-1-5 { gap: 0.25rem; }
     .break-anywhere { overflow-wrap: anywhere; }
     .whitespace-nowrap { white-space: nowrap; }
     .overflow-visible { overflow: visible; }
     .overflow-x-auto { overflow-x: auto; }
+    .object-cover { object-fit: cover; }
+    .object-center { object-position: center; }
     .bg-current { background: currentColor; }
     .bg-gray-2 { background: var(--gray-2); }
     .bg-gray-5 { background: var(--gray-5); }
     .bg-green-1 { background: var(--green-1); }
     .bg-green-2 { background: var(--green-2); }
+    .bg-green-3 { background: var(--green-3); }
     .edge-inset {
       border-width: 2px;
       border-style: solid;
@@ -634,8 +646,13 @@ const SITE_CSS_RULES: &str = r##"
     .text-base { font-size: var(--pixel-font-size); }
     .text-sm { font-size: var(--pixel-font-size); }
     .font-normal { font-weight: 400; }
+    .text-2x { font-size: calc(var(--pixel-font-size) * 2); }
     .text-center { text-align: center; }
     .text-right { text-align: right; }
+    .cursor-pointer { cursor: pointer; }
+    .list-none { list-style: none; }
+    .outline-none { outline: none; }
+    .select-none { user-select: none; }
     .square-3 { width: 0.583333rem; height: 0.583333rem; }
     .border-b-dotted,
     .section-separator,
@@ -664,67 +681,6 @@ const SITE_CSS_RULES: &str = r##"
       gap: 0.333333rem;
       padding-left: 1.333333rem;
     }
-    .metric-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0.333333rem;
-    }
-    .metric-box {
-      min-width: 0;
-      background: var(--green-2);
-      padding: 0.5rem;
-    }
-    .metric-box {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) max-content;
-      align-items: center;
-      gap: 1rem;
-    }
-    .metric-box:first-child {
-      grid-column: 1 / -1;
-      grid-template-columns: minmax(0, 1fr);
-      justify-items: center;
-      gap: 0.416667rem;
-      padding: 0.666667rem 0.5rem;
-      text-align: center;
-    }
-    .metric-box:first-child .metric-value {
-      font-size: calc(var(--pixel-font-size) * 2);
-    }
-    .metric-box:not(:first-child) {
-      grid-template-columns: max-content max-content;
-      justify-content: center;
-      gap: 0.666667rem;
-    }
-    .metric-label {
-      color: var(--gray-5);
-      font-size: var(--pixel-font-size);
-    }
-    .metric-value {
-      color: var(--gray-6);
-      font-size: var(--pixel-font-size);
-      white-space: nowrap;
-    }
-    .overview-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0.333333rem;
-    }
-    .thesis-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(3.666667rem, max-content);
-      align-items: start;
-      gap: 0.5rem;
-      min-width: 0;
-      padding: 0.5rem;
-      font-size: var(--pixel-font-size);
-    }
-    .thesis-row:nth-child(odd):not(:first-child) {
-      background: var(--green-3);
-    }
-    .detail-summary {
-      font-size: var(--pixel-font-size);
-    }
     .result-positive { color: var(--green-7); }
     .result-negative { color: var(--red-2); }
     .result-neutral { color: var(--gray-6); }
@@ -732,21 +688,8 @@ const SITE_CSS_RULES: &str = r##"
     details.edge-outline:focus-within {
       border-color: var(--gray-4);
     }
-    details > summary {
-      cursor: pointer;
-      list-style: none;
-      outline: none;
-      user-select: none;
-    }
-    details > summary::-webkit-details-marker {
+    details > summary.list-none::-webkit-details-marker {
       display: none;
-    }
-    .detail-summary {
-      display: grid;
-      grid-template-columns: minmax(7.5rem, 0.34fr) minmax(0, 1fr) max-content;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem;
     }
     [data-detail-action]:hover {
       color: var(--gray-6);
@@ -757,27 +700,10 @@ const SITE_CSS_RULES: &str = r##"
     details[open] [data-detail-action="close"] {
       display: inline-block;
     }
-    .detail-content {
-      display: grid;
-      gap: 0.5rem;
-      background: var(--gray-2);
-      padding: 0.666667rem 0.5rem 0.666667rem;
-    }
-    .detail-subsection {
-      display: grid;
-      gap: 0.333333rem;
-      padding-top: 0.166667rem;
-    }
     svg {
       font-family: var(--pixel-font-stack);
       font-size: var(--pixel-font-size);
       font-kerning: none;
-    }
-    .performance-chart-svg {
-      width: 100%;
-      min-width: 38.333333rem;
-      height: auto;
-      max-width: none;
     }
 
     .axis-label {
@@ -842,12 +768,7 @@ const SITE_CSS_RULES: &str = r##"
       .max-md\:p-4 { padding: 0.666667rem; }
       .max-md\:py-2 { padding-top: 0.333333rem; padding-bottom: 0.333333rem; }
       .max-md\:text-left { text-align: left; }
-      .metric-grid,
-      .overview-grid,
-      .thesis-row,
-      .detail-summary {
-        grid-template-columns: minmax(0, 1fr);
-      }
+      .max-md\:col-span-1 { grid-column: span 1 / span 1; }
       .max-md\:justify-self-start {
         justify-self: start;
       }
@@ -1076,30 +997,23 @@ impl SiteView {
 }
 
 fn site_document(view: &SiteView) -> Node {
-    element(
-        "html",
-        attrs(&[("lang", "en")]),
-        vec![site_head(), site_body(view)],
-    )
+    html(attrs(&[("lang", "en")]), vec![site_head(), site_body(view)])
 }
 
 fn site_head() -> Node {
-    element(
-        "head",
+    head(
         Vec::new(),
         vec![
-            element("meta", attrs(&[("charset", "utf-8")]), Vec::new()),
-            element(
-                "meta",
+            meta(attrs(&[("charset", "utf-8")]), Vec::new()),
+            meta(
                 attrs(&[
                     ("name", "viewport"),
                     ("content", "width=device-width, initial-scale=1"),
                 ]),
                 Vec::new(),
             ),
-            element("title", Vec::new(), vec![Node::text("Ocotelolco")]),
-            element(
-                "link",
+            title(Vec::new(), vec![Node::text("Ocotelolco")]),
+            link(
                 vec![
                     attr("rel", "icon"),
                     attr("type", "image/svg+xml"),
@@ -1107,19 +1021,17 @@ fn site_head() -> Node {
                 ],
                 Vec::new(),
             ),
-            element("style", Vec::new(), vec![Node::raw_text(site_css())]),
+            style(Vec::new(), vec![Node::raw_text(site_css())]),
         ],
     )
 }
 
 fn site_body(view: &SiteView) -> Node {
-    element(
-        "body",
+    body(
         Vec::new(),
         vec![
-            element(
-                "main",
-                attrs(&[("class", "min-h-screen grid gap-4 p-8 max-md:p-4")]),
+            main_element(
+                vec![class("min-h-screen grid gap-4 p-8 max-md:p-4")],
                 vec![site_banner(), desktop_window(view)],
             ),
             script(
@@ -1135,16 +1047,14 @@ fn site_body(view: &SiteView) -> Node {
 }
 
 fn site_banner() -> Node {
-    element(
-        "header",
-        attrs(&[("class", "grid gap-2")]),
+    header(
+        vec![class("grid gap-2")],
         vec![
             banner_image(),
             p(
-                attrs(&[(
-                    "class",
-                    "site-subheader mx-auto w-full max-w-window text-center text-base text-gray-6",
-                )]),
+                vec![class(
+                    "mx-auto w-full max-w-window break-anywhere text-center text-base text-gray-6",
+                )],
                 vec![Node::text(
                     "a trading, predicting, and betting project, by Chadtech",
                 )],
@@ -1154,10 +1064,9 @@ fn site_banner() -> Node {
 }
 
 fn banner_image() -> Node {
-    element(
-        "img",
+    img(
         vec![
-            attr("class", "site-banner block mx-auto w-full max-w-window"),
+            class("block h-banner mx-auto w-full max-w-window object-cover object-center"),
             attr("src", banner_image_data_uri()),
             attr("alt", "Ocotelolco"),
             attr("width", "1672"),
@@ -1176,25 +1085,19 @@ fn banner_image_data_uri() -> String {
 
 fn desktop_window(view: &SiteView) -> Node {
     div(
-        attrs(&[
-            (
-                "class",
+        vec![
+            class(
                 "relative mx-auto min-h-window w-full max-w-window bg-gray-2 edge-outset p-1 text-gray-6 max-md:min-h-window",
             ),
-            ("aria-label", "Ocotelolco website"),
-        ]),
+            attr("aria-label", "Ocotelolco website"),
+        ],
         vec![div(
-            attrs(&[(
-                "class",
+            vec![class(
                 "relative flex min-h-window-inner flex-col bg-gray-2 max-md:min-h-window",
-            )]),
+            )],
             vec![
-                element(
-                    "header",
-                    attrs(&[(
-                        "class",
-                        "min-h-7 bg-gray-5 px-2 py-1 text-green-1",
-                    )]),
+                header(
+                    vec![class("min-h-7 bg-gray-5 px-2 py-1 text-green-1")],
                     vec![span(Vec::new(), vec![Node::text(&view.content.title)])],
                 ),
                 report_body(view),
@@ -1205,12 +1108,12 @@ fn desktop_window(view: &SiteView) -> Node {
 
 fn report_body(view: &SiteView) -> Node {
     section(
-        attrs(&[
-            ("class", "relative mt-1 flex-1 bg-gray-2 p-5 max-md:p-3"),
-            ("aria-label", "Report content"),
-        ]),
+        vec![
+            class("relative mt-1 flex-1 bg-gray-2 p-5 max-md:p-3"),
+            attr("aria-label", "Report content"),
+        ],
         vec![div(
-            attrs(&[("class", "grid min-w-0 gap-4")]),
+            vec![class("grid min-w-0 gap-4")],
             vec![
                 overview_section(&view.content),
                 performance_panel(view),
@@ -1225,18 +1128,15 @@ fn report_body(view: &SiteView) -> Node {
 fn overview_section(content: &CampaignContent) -> Node {
     let overview = &content.overview;
     section(
-        attrs(&[
-            (
-                "class",
-                "grid grid-cols-1 items-start gap-4 section-separator pb-4",
-            ),
-            ("aria-label", "Campaign overview"),
-        ]),
+        vec![
+            class("grid grid-cols-1 items-start gap-4 section-separator pb-4"),
+            attr("aria-label", "Campaign overview"),
+        ],
         vec![
             div(
-                attrs(&[("class", "grid gap-2")]),
+                vec![class("grid gap-2")],
                 vec![p(
-                    attrs(&[("class", CONTENT_COPY)]),
+                    vec![class(CONTENT_COPY)],
                     vec![Node::text(&overview.summary)],
                 )],
             ),
@@ -1248,13 +1148,13 @@ fn overview_section(content: &CampaignContent) -> Node {
 fn campaign_context_section(content: &CampaignContent) -> Node {
     let overview = &content.overview;
     section(
-        attrs(&[
-            ("class", "grid gap-4 section-separator pb-4"),
-            ("aria-label", "Campaign context"),
-        ]),
+        vec![
+            class("grid gap-4 section-separator pb-4"),
+            attr("aria-label", "Campaign context"),
+        ],
         vec![
             div(
-                vec![attr("class", format!("grid gap-2 {CONTENT_COPY}"))],
+                vec![class(format!("grid gap-2 {CONTENT_COPY}"))],
                 overview
                     .context
                     .iter()
@@ -1280,13 +1180,10 @@ fn performance_panel(view: &SiteView) -> Node {
         .unwrap_or("S&P 500");
 
     section(
-        attrs(&[
-            (
-                "class",
-                "relative min-w-0 bg-gray-2 py-4 text-gray-6 max-md:py-2",
-            ),
-            ("aria-label", "Rate of return chart"),
-        ]),
+        vec![
+            class("relative min-w-0 bg-gray-2 py-4 text-gray-6 max-md:py-2"),
+            attr("aria-label", "Rate of return chart"),
+        ],
         vec![
             chart_copy(view),
             chart_viewport(),
@@ -1303,20 +1200,19 @@ fn performance_panel(view: &SiteView) -> Node {
 fn chart_copy(view: &SiteView) -> Node {
     let performance = &view.content.performance;
     div(
-        attrs(&[("class", "mb-4 grid gap-1")]),
+        vec![class("mb-4 grid gap-1")],
         vec![
-            element(
-                "h2",
-                attrs(&[("class", "text-base font-normal text-gray-4")]),
+            h2(
+                vec![class("text-base font-normal text-gray-4")],
                 vec![Node::text(&performance.title)],
             ),
             p(
-                attrs(&[("class", CONTENT_COPY)]),
+                vec![class(CONTENT_COPY)],
                 vec![
                     Node::text(&performance.summary),
                     Node::text(" Account balance return was "),
                     span(
-                        attrs(&[("class", "text-green-7")]),
+                        vec![class("text-green-7")],
                         vec![Node::text(view.account_return.clone())],
                     ),
                     Node::text(format!(" from {}.", view.actual_window)),
@@ -1328,24 +1224,32 @@ fn chart_copy(view: &SiteView) -> Node {
 
 fn key_metrics(metrics: &[KeyMetric]) -> Node {
     div(
-        attrs(&[("class", "metric-grid")]),
-        metrics.iter().map(key_metric).collect(),
+        vec![class(METRIC_GRID)],
+        metrics
+            .iter()
+            .enumerate()
+            .map(|(index, metric)| key_metric(metric, index == 0))
+            .collect(),
     )
 }
 
-fn key_metric(metric: &KeyMetric) -> Node {
+fn key_metric(metric: &KeyMetric, is_primary: bool) -> Node {
+    let layout_class = if is_primary {
+        METRIC_PRIMARY
+    } else {
+        METRIC_SECONDARY
+    };
+    let value_size_class = if is_primary { " text-2x" } else { "" };
+
     div(
-        attrs(&[("class", "metric-box edge-inset")]),
+        vec![class(format!("{METRIC_BOX} {layout_class}"))],
         vec![
+            div(vec![class(METRIC_LABEL)], vec![Node::text(&metric.label)]),
             div(
-                attrs(&[("class", "metric-label")]),
-                vec![Node::text(&metric.label)],
-            ),
-            div(
-                vec![attr(
-                    "class",
-                    format!("metric-value {}", metric_value_class(&metric.value)),
-                )],
+                vec![class(format!(
+                    "{METRIC_VALUE}{value_size_class} {}",
+                    metric_value_class(&metric.value)
+                ))],
                 vec![Node::text(format_metric_value(&metric.value))],
             ),
         ],
@@ -1354,18 +1258,17 @@ fn key_metric(metric: &KeyMetric) -> Node {
 
 fn rules_summary(rules: &[String], takeaway: &str) -> Node {
     div(
-        attrs(&[("class", "overview-grid")]),
+        vec![class(OVERVIEW_GRID)],
         vec![
             div(
-                attrs(&[("class", OVERVIEW_PANEL)]),
+                vec![class(OVERVIEW_PANEL)],
                 vec![
-                    element(
-                        "h2",
-                        attrs(&[("class", "text-base font-normal text-gray-4")]),
+                    h2(
+                        vec![class("text-base font-normal text-gray-4")],
                         vec![Node::text("Rules")],
                     ),
                     ol(
-                        vec![attr("class", format!("content-list {CONTENT_COPY}"))],
+                        vec![class(format!("content-list {CONTENT_COPY}"))],
                         rules
                             .iter()
                             .map(|rule| li(Vec::new(), vec![Node::text(rule)]))
@@ -1374,17 +1277,13 @@ fn rules_summary(rules: &[String], takeaway: &str) -> Node {
                 ],
             ),
             div(
-                attrs(&[("class", OVERVIEW_PANEL)]),
+                vec![class(OVERVIEW_PANEL)],
                 vec![
-                    element(
-                        "h2",
-                        attrs(&[("class", "text-base font-normal text-gray-4")]),
+                    h2(
+                        vec![class("text-base font-normal text-gray-4")],
                         vec![Node::text("Prediction is not position")],
                     ),
-                    p(
-                        attrs(&[("class", CONTENT_COPY)]),
-                        vec![Node::text(takeaway)],
-                    ),
+                    p(vec![class(CONTENT_COPY)], vec![Node::text(takeaway)]),
                 ],
             ),
         ],
@@ -1393,24 +1292,20 @@ fn rules_summary(rules: &[String], takeaway: &str) -> Node {
 
 fn thesis_scoreboard(scoreboard: &ThesisScoreboard) -> Node {
     section(
-        attrs(&[
-            ("class", "grid gap-2 section-separator pb-4"),
-            ("aria-label", "Thesis scoreboard"),
-        ]),
         vec![
-            element(
-                "h2",
-                attrs(&[("class", "text-base font-normal text-gray-4")]),
+            class("grid gap-2 section-separator pb-4"),
+            attr("aria-label", "Thesis scoreboard"),
+        ],
+        vec![
+            h2(
+                vec![class("text-base font-normal text-gray-4")],
                 vec![Node::text(&scoreboard.title)],
             ),
             p(
-                attrs(&[("class", CONTENT_COPY)]),
+                vec![class(CONTENT_COPY)],
                 vec![Node::text(&scoreboard.summary)],
             ),
-            div(
-                attrs(&[("class", THESIS_TABLE)]),
-                thesis_rows(&scoreboard.rows),
-            ),
+            div(vec![class(THESIS_TABLE)], thesis_rows(&scoreboard.rows)),
         ],
     )
 }
@@ -1418,44 +1313,45 @@ fn thesis_scoreboard(scoreboard: &ThesisScoreboard) -> Node {
 fn thesis_rows(rows: &[ThesisRow]) -> Vec<Node> {
     let mut nodes = Vec::with_capacity(rows.len() + 1);
     nodes.push(div(
-        attrs(&[("class", THESIS_HEADER)]),
+        vec![class(THESIS_HEADER)],
         vec![
             span(Vec::new(), vec![Node::text("Thesis/tag")]),
-            span(
-                attrs(&[("class", THESIS_RETURN)]),
-                vec![Node::text("Returns")],
-            ),
+            span(vec![class(THESIS_RETURN)], vec![Node::text("Returns")]),
         ],
     ));
-    nodes.extend(rows.iter().map(thesis_row));
+    nodes.extend(
+        rows.iter()
+            .enumerate()
+            .map(|(index, row)| thesis_row(row, index)),
+    );
     nodes
 }
 
-fn thesis_row(row: &ThesisRow) -> Node {
+fn thesis_row(row: &ThesisRow, index: usize) -> Node {
+    let background_class = if index % 2 == 0 {
+        "bg-green-2"
+    } else {
+        "bg-green-3"
+    };
+
     div(
-        attrs(&[("class", THESIS_ROW)]),
+        vec![class(format!("{THESIS_ROW} {background_class}"))],
         vec![
             div(
-                attrs(&[("class", "grid gap-1")]),
+                vec![class("grid gap-1")],
                 vec![
-                    span(
-                        attrs(&[("class", "text-gray-5")]),
-                        vec![Node::text(&row.title)],
-                    ),
+                    span(vec![class("text-gray-5")], vec![Node::text(&row.title)]),
                     p(
-                        attrs(&[("class", "text-sm")]),
+                        vec![class("text-sm")],
                         vec![Node::text(&row.visible_summary)],
                     ),
                 ],
             ),
             span(
-                vec![attr(
-                    "class",
-                    format!(
-                        "{THESIS_RETURN} {}",
-                        return_figure_class(row.realized_return)
-                    ),
-                )],
+                vec![class(format!(
+                    "{THESIS_RETURN} {}",
+                    return_figure_class(row.realized_return)
+                ))],
                 vec![Node::text(
                     row.realized_return
                         .map(|figure| format_percentage_figure(figure, true))
@@ -1468,19 +1364,15 @@ fn thesis_row(row: &ThesisRow) -> Node {
 
 fn detail_report(report: &DetailReport) -> Node {
     section(
-        attrs(&[("class", "grid gap-2"), ("aria-label", "Full report")]),
+        vec![class("grid gap-2"), attr("aria-label", "Full report")],
         vec![
-            element(
-                "h2",
-                attrs(&[("class", "text-base font-normal text-gray-4")]),
+            h2(
+                vec![class("text-base font-normal text-gray-4")],
                 vec![Node::text(&report.title)],
             ),
-            p(
-                attrs(&[("class", CONTENT_COPY)]),
-                vec![Node::text(&report.summary)],
-            ),
+            p(vec![class(CONTENT_COPY)], vec![Node::text(&report.summary)]),
             div(
-                attrs(&[("class", DETAIL_LIST)]),
+                vec![class(DETAIL_LIST)],
                 report.sections.iter().map(detail_section).collect(),
             ),
         ],
@@ -1488,39 +1380,34 @@ fn detail_report(report: &DetailReport) -> Node {
 }
 
 fn detail_section(section: &DetailSection) -> Node {
-    let mut attributes = attrs(&[
-        ("id", detail_topic_id(section.topic)),
-        ("class", DETAIL_SECTION),
-    ]);
+    let mut attributes = vec![
+        attr("id", detail_topic_id(section.topic)),
+        class(DETAIL_SECTION),
+    ];
     if section.default_disclosure == DisclosureState::Expanded {
         attributes.push(attr("open", ""));
     }
 
-    element(
-        "details",
+    details(
         attributes,
         vec![
-            element(
-                "summary",
-                Vec::new(),
+            summary(
+                vec![class("cursor-pointer list-none outline-none select-none")],
                 vec![div(
-                    attrs(&[("class", "detail-summary")]),
+                    vec![class(DETAIL_SUMMARY)],
                     vec![
+                        span(vec![class(DETAIL_TITLE)], vec![Node::text(&section.title)]),
                         span(
-                            attrs(&[("class", DETAIL_TITLE)]),
-                            vec![Node::text(&section.title)],
-                        ),
-                        span(
-                            attrs(&[("class", DETAIL_TEASER)]),
+                            vec![class(DETAIL_TEASER)],
                             vec![Node::text(&section.summary)],
                         ),
                         span(
-                            attrs(&[("class", DETAIL_ACTION), ("data-detail-action", "open")]),
+                            vec![class(DETAIL_ACTION), attr("data-detail-action", "open")],
                             vec![Node::text("Open >")],
                         ),
                         span(
                             vec![
-                                attr("class", format!("{DETAIL_ACTION} {DETAIL_ACTION_CLOSE}")),
+                                class(format!("{DETAIL_ACTION} {DETAIL_ACTION_CLOSE}")),
                                 attr("data-detail-action", "close"),
                             ],
                             vec![Node::text("Close v")],
@@ -1529,7 +1416,7 @@ fn detail_section(section: &DetailSection) -> Node {
                 )],
             ),
             div(
-                attrs(&[("class", "detail-content")]),
+                vec![class(DETAIL_CONTENT)],
                 render_detail_blocks(&section.blocks),
             ),
         ],
@@ -1542,18 +1429,16 @@ fn render_detail_blocks(blocks: &[DetailBlock]) -> Vec<Node> {
 
 fn render_detail_block(block: &DetailBlock) -> Node {
     match block {
-        DetailBlock::Paragraph(text) => {
-            p(attrs(&[("class", CONTENT_COPY)]), vec![Node::text(text)])
-        }
+        DetailBlock::Paragraph(text) => p(vec![class(CONTENT_COPY)], vec![Node::text(text)]),
         DetailBlock::OrderedList(items) => ol(
-            vec![attr("class", format!("content-list {CONTENT_COPY}"))],
+            vec![class(format!("content-list {CONTENT_COPY}"))],
             items
                 .iter()
                 .map(|item| li(Vec::new(), vec![Node::text(item)]))
                 .collect(),
         ),
         DetailBlock::UnorderedList(items) => ul(
-            vec![attr("class", format!("content-list {CONTENT_COPY}"))],
+            vec![class(format!("content-list {CONTENT_COPY}"))],
             items.iter().map(render_list_item).collect(),
         ),
         DetailBlock::Subsection(subsection) => detail_subsection(subsection),
@@ -1562,15 +1447,14 @@ fn render_detail_block(block: &DetailBlock) -> Node {
 
 fn detail_subsection(subsection: &DetailSubsection) -> Node {
     section(
-        attrs(&[("class", "detail-subsection")]),
+        vec![class(DETAIL_SUBSECTION)],
         vec![
-            element(
-                "h3",
-                attrs(&[("class", "text-base font-normal text-gray-5")]),
+            h3(
+                vec![class("text-base font-normal text-gray-5")],
                 vec![Node::text(&subsection.title)],
             ),
             div(
-                attrs(&[("class", "grid gap-2")]),
+                vec![class("grid gap-2")],
                 render_detail_blocks(&subsection.blocks),
             ),
         ],
@@ -1586,35 +1470,30 @@ fn render_list_item(item: &ListItem) -> Node {
 
 fn chart_viewport() -> Node {
     div(
-        attrs(&[(
-            "class",
+        vec![class(
             "relative min-w-0 min-h-chart overflow-x-auto bg-green-2 edge-inset p-3 max-md:min-h-chart max-md:p-2",
-        )]),
-        vec![element(
-            "svg",
-            attrs(&[
-                ("id", "performance-chart"),
-                (
-                    "class",
-                    "performance-chart-svg block min-h-svg overflow-visible text-gray-6 max-md:min-h-svg",
-                ),
-                ("role", "img"),
-                ("aria-labelledby", "performance-chart-title"),
-                ("width", "920"),
-                ("height", "330"),
-                ("viewBox", "0 0 920 330"),
-                ("preserveAspectRatio", "xMidYMid meet"),
-            ]),
+        )],
+        vec![svg(
             vec![
-                element(
-                    "title",
+                attr("id", "performance-chart"),
+                class(
+                    "block h-auto min-w-chart w-full max-w-none min-h-svg overflow-visible text-gray-6 max-md:min-h-svg",
+                ),
+                attr("role", "img"),
+                attr("aria-labelledby", "performance-chart-title"),
+                attr("width", "920"),
+                attr("height", "330"),
+                attr("viewBox", "0 0 920 330"),
+                attr("preserveAspectRatio", "xMidYMid meet"),
+            ],
+            vec![
+                title(
                     attrs(&[("id", "performance-chart-title")]),
                     vec![Node::text(
                         "Account balance return compared with S&P 500 return",
                     )],
                 ),
-                element(
-                    "text",
+                text(
                     attrs(&[("x", "24"), ("y", "40"), ("fill", "currentColor")]),
                     vec![Node::text("Loading chart...")],
                 ),
@@ -1630,26 +1509,19 @@ fn return_table(
     sp500_return: &str,
 ) -> Node {
     div(
-        attrs(&[
-            (
-                "class",
-                "relative mt-4 bg-green-2 edge-inset text-gray-6",
-            ),
-            ("aria-label", "Rate of return table"),
-        ]),
+        vec![
+            class("relative mt-4 bg-green-2 edge-inset text-gray-6"),
+            attr("aria-label", "Rate of return table"),
+        ],
         vec![
             div(
-                attrs(&[(
-                    "class",
+                vec![class(
                     "grid min-h-row-header grid-cols-return items-center gap-4 border-b-solid bg-table-header px-3 py-2 text-base text-gray-5 max-md:grid-cols-1 max-md:gap-1",
-                )]),
+                )],
                 vec![
                     span(Vec::new(), vec![Node::text("Portfolio/Index")]),
                     span(
-                        attrs(&[(
-                            "class",
-                            "text-right text-gray-5 max-md:text-left",
-                        )]),
+                        vec![class("text-right text-gray-5 max-md:text-left")],
                         vec![Node::text("Rate of Return")],
                     ),
                 ],
@@ -1662,22 +1534,18 @@ fn return_table(
 
 fn return_row(legend_class: &str, name: &str, value: &str) -> Node {
     div(
-        attrs(&[(
-            "class",
+        vec![class(
             "grid min-h-row grid-cols-return items-center gap-4 border-b-dotted px-3 py-2 text-base max-md:grid-cols-1 max-md:gap-1",
-        )]),
+        )],
         vec![
             span(
-                attrs(&[("class", "flex items-center gap-2")]),
+                vec![class("flex items-center gap-2")],
                 vec![
                     span(
                         vec![
-                            attr(
-                                "class",
-                                format!(
-                                    "square-3 flex-none bg-current text-chart-{legend_class}"
-                                ),
-                            ),
+                            class(format!(
+                                "square-3 flex-none bg-current text-chart-{legend_class}"
+                            )),
                             attr("aria-hidden", "true"),
                         ],
                         Vec::new(),
@@ -1686,10 +1554,7 @@ fn return_row(legend_class: &str, name: &str, value: &str) -> Node {
                 ],
             ),
             span(
-                attrs(&[(
-                    "class",
-                    "text-right text-green-7 max-md:text-left",
-                )]),
+                vec![class("text-right text-green-7 max-md:text-left")],
                 vec![Node::text(value)],
             ),
         ],
@@ -1789,44 +1654,50 @@ fn element(tag: &str, attributes: Vec<Attribute>, children: Vec<Node>) -> Node {
     Node::element(tag, attributes, children)
 }
 
-fn div(attributes: Vec<Attribute>, children: Vec<Node>) -> Node {
-    element("div", attributes, children)
+macro_rules! tag_helpers {
+    ($($function:ident => $tag:literal),+ $(,)?) => {
+        $(
+            fn $function(attributes: Vec<Attribute>, children: Vec<Node>) -> Node {
+                element($tag, attributes, children)
+            }
+        )+
+    };
 }
 
-fn span(attributes: Vec<Attribute>, children: Vec<Node>) -> Node {
-    element("span", attributes, children)
-}
-
-fn section(attributes: Vec<Attribute>, children: Vec<Node>) -> Node {
-    element("section", attributes, children)
-}
-
-fn p(attributes: Vec<Attribute>, children: Vec<Node>) -> Node {
-    element("p", attributes, children)
-}
-
-fn ol(attributes: Vec<Attribute>, children: Vec<Node>) -> Node {
-    element("ol", attributes, children)
-}
-
-fn ul(attributes: Vec<Attribute>, children: Vec<Node>) -> Node {
-    element("ul", attributes, children)
-}
-
-fn li(attributes: Vec<Attribute>, children: Vec<Node>) -> Node {
-    element("li", attributes, children)
-}
-
-fn code(attributes: Vec<Attribute>, children: Vec<Node>) -> Node {
-    element("code", attributes, children)
-}
-
-fn script(attributes: Vec<Attribute>, children: Vec<Node>) -> Node {
-    element("script", attributes, children)
+tag_helpers! {
+    html => "html",
+    head => "head",
+    meta => "meta",
+    title => "title",
+    link => "link",
+    style => "style",
+    body => "body",
+    main_element => "main",
+    header => "header",
+    img => "img",
+    div => "div",
+    span => "span",
+    section => "section",
+    h2 => "h2",
+    h3 => "h3",
+    p => "p",
+    ol => "ol",
+    ul => "ul",
+    li => "li",
+    code => "code",
+    details => "details",
+    summary => "summary",
+    svg => "svg",
+    text => "text",
+    script => "script",
 }
 
 fn attr(name: &str, value: impl Into<String>) -> Attribute {
     (name.to_string(), value.into())
+}
+
+fn class(value: impl Into<String>) -> Attribute {
+    attr("class", value)
 }
 
 fn attrs(values: &[(&str, &str)]) -> Vec<Attribute> {
@@ -2090,18 +1961,26 @@ mod tests {
     fn node_renderer_escapes_text_and_attributes() {
         let html = element(
             "a",
-            vec![attr(
-                "href",
-                "https://example.com?name=S&P 500&label=\"next\"",
-            )],
+            vec![
+                class("external-link"),
+                attr("href", "https://example.com?name=S&P 500&label=\"next\""),
+            ],
             vec![Node::text("S&P 500 <returns>")],
         )
         .to_html();
 
         assert_eq!(
             html,
-            r#"<a href="https://example.com?name=S&amp;P 500&amp;label=&quot;next&quot;">S&amp;P 500 &lt;returns&gt;</a>"#
+            r#"<a class="external-link" href="https://example.com?name=S&amp;P 500&amp;label=&quot;next&quot;">S&amp;P 500 &lt;returns&gt;</a>"#
         );
+    }
+
+    #[test]
+    fn universal_reset_clears_default_margins() {
+        let css = site_css();
+
+        assert!(css.contains("* {\n      box-sizing: border-box;\n      margin: 0;\n    }"));
+        assert!(!css.contains("h1,\n    h2,\n    h3,"));
     }
 
     #[test]
@@ -2175,7 +2054,9 @@ mod tests {
 
         assert!(site.contains("--table-header: #06170d;"));
         assert!(site.contains(".bg-table-header { background: var(--table-header); }"));
-        assert!(site.contains(r#"class="thesis-row bg-table-header text-gray-5""#));
+        assert!(site.contains(
+            r#"class="grid grid-cols-thesis items-start gap-3 min-w-0 bg-table-header p-3 text-base text-gray-5 max-md:grid-cols-1""#
+        ));
         assert!(site.contains("border-b-solid bg-table-header"));
         assert!(!site.contains("border-b-solid bg-green-1"));
         assert!(!site.contains("thesis-header"));
@@ -2212,7 +2093,9 @@ mod tests {
         assert!(site.contains(".edge-inset {\n      border-width: 2px;\n      border-style: solid;\n      border-color: var(--gray-1) var(--gray-3) var(--gray-3) var(--gray-1);"));
         assert!(site.contains(".edge-outset {\n      border-width: 2px;\n      border-style: solid;\n      border-color: var(--gray-3) var(--gray-1) var(--gray-1) var(--gray-3);"));
         assert!(site.contains(".edge-outline {\n      border: 2px solid var(--gray-3);"));
-        assert!(site.contains(r#"class="metric-box edge-inset""#));
+        assert!(site.contains(
+            r#"class="grid min-w-0 items-center bg-green-2 edge-inset p-3 col-span-full grid-cols-1 justify-items-center gap-2-5 py-4 text-center max-md:col-span-1""#
+        ));
         assert!(site.contains(r#"class="min-w-0 bg-green-2 p-3 text-base edge-inset""#));
         assert!(site.contains(r#"class="grid bg-green-2 edge-inset""#));
         assert!(site.contains("overflow-x-auto bg-green-2 edge-inset p-3"));
@@ -2225,12 +2108,17 @@ mod tests {
     fn thesis_scoreboard_is_one_alternating_green_panel() {
         let site = render_site(&fixture_view());
 
-        assert!(site.contains(
-            ".thesis-row:nth-child(odd):not(:first-child) {\n      background: var(--green-3);\n    }"
-        ));
         assert!(site.contains(r#"class="grid bg-green-2 edge-inset""#));
-        assert!(site.contains(r#"class="thesis-row bg-table-header text-gray-5""#));
-        assert!(site.contains(r#"class="thesis-row bg-green-2""#));
+        assert!(site.contains(
+            r#"class="grid grid-cols-thesis items-start gap-3 min-w-0 bg-table-header p-3 text-base text-gray-5 max-md:grid-cols-1""#
+        ));
+        assert!(site.contains(
+            r#"class="grid grid-cols-thesis items-start gap-3 min-w-0 p-3 text-base max-md:grid-cols-1 bg-green-2""#
+        ));
+        assert!(site.contains(
+            r#"class="grid grid-cols-thesis items-start gap-3 min-w-0 p-3 text-base max-md:grid-cols-1 bg-green-3""#
+        ));
+        assert!(!site.contains(".thesis-row"));
         assert!(!site.contains("thesis-table"));
         assert!(!site.contains("thesis-header"));
         assert!(
@@ -2254,7 +2142,11 @@ mod tests {
         ));
         assert!(site.contains("[data-detail-action]:hover {\n      color: var(--gray-6);"));
         assert!(!site.contains(".detail-section > summary:hover .detail-summary"));
-        assert!(site.contains(".detail-content {\n      display: grid;\n      gap: 0.5rem;\n      background: var(--gray-2);"));
+        assert!(site.contains(r#"class="grid gap-3 bg-gray-2 px-3 py-4""#));
+        assert!(
+            site.contains(r#"<summary class="cursor-pointer list-none outline-none select-none">"#)
+        );
+        assert!(!site.contains(".detail-content"));
         assert!(!site.contains("detail-action-close"));
         assert!(!site.contains("detail-section"));
     }
@@ -2287,11 +2179,10 @@ mod tests {
         assert!(site.contains(r#"class="w-full max-w-none text-gray-5 text-base break-anywhere""#));
         assert!(!site.contains("content-copy"));
         assert!(!site.contains(".metric-context"));
-        assert!(site.contains(".metric-box:first-child {\n      grid-column: 1 / -1;"));
-        assert!(site.contains("font-size: calc(var(--pixel-font-size) * 2);"));
-        assert!(site.contains(
-            ".metric-box:not(:first-child) {\n      grid-template-columns: max-content max-content;"
-        ));
+        assert!(site.contains(".col-span-full { grid-column: 1 / -1; }"));
+        assert!(site.contains(".text-2x { font-size: calc(var(--pixel-font-size) * 2); }"));
+        assert!(site.contains(".grid-cols-max { grid-template-columns: max-content max-content; }"));
+        assert!(!site.contains(".metric-box"));
         assert!(site.contains("font-size: var(--pixel-font-size);"));
         assert!(!site.contains("line-height: 1.05;"));
         assert!(!site.contains("max-width: 78ch;"));
@@ -2362,7 +2253,11 @@ mod tests {
     fn chart_resizes_to_its_viewport() {
         let site = render_site(&fixture_view());
 
-        assert!(site.contains(".performance-chart-svg {\n      width: 100%;"));
+        assert!(site.contains(".min-w-chart { min-width: 38.333333rem; }"));
+        assert!(site.contains(
+            r#"class="block h-auto min-w-chart w-full max-w-none min-h-svg overflow-visible text-gray-6 max-md:min-h-svg""#
+        ));
+        assert!(!site.contains(".performance-chart-svg"));
         assert!(site.contains("const chartViewport = svg.parentElement;"));
         assert!(site.contains("const minimumWidth = 920;"));
         assert!(site.contains("const width = Math.max(minimumWidth, Math.floor(availableWidth));"));
@@ -2377,7 +2272,9 @@ mod tests {
 
         assert!(site.contains(r#""account_points":[{"date":"2025-10-28""#));
         assert!(site.contains(r#""sp500_points":[{"date":"2025-10-28""#));
-        assert!(site.contains(r#"<img class="site-banner "#));
+        assert!(site.contains(
+            r#"<img class="block h-banner mx-auto w-full max-w-window object-cover object-center""#
+        ));
         assert!(site.contains(r#"src="data:image/png;base64,iVBORw0KGgo"#));
         assert!(!site.contains(r#"src="../ocotelolco_banner.png""#));
     }
