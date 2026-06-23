@@ -5,6 +5,7 @@ target
 .DS_Store
 ui.json
 notes/*.json
+notes/*.md
 imports/**/*.csv
 imports/**/*.CSV
 imports/**/*.PNG

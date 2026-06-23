@@ -6,6 +6,7 @@ mod palette;
 mod transactions;
 mod ui;
 mod website;
+mod website_content;
 
 #[derive(Debug, Parser)]
 #[command(name = "ocotelolco")]
