@@ -34,6 +34,8 @@ enum Command {
         #[arg(short, long, value_name = "PATH")]
         output: Option<PathBuf>,
     },
+    /// Generate the GitHub Pages website, commit it, and push main to origin.
+    DeployWebsite,
 }
 
 fn main() {
@@ -60,6 +62,12 @@ fn main() {
                 std::process::exit(1);
             }
             println!("Wrote website to {}", output.display());
+        }
+        Command::DeployWebsite => {
+            if let Err(error) = website::deploy_site() {
+                eprintln!("failed to deploy website: {error}");
+                std::process::exit(1);
+            }
         }
     }
 }

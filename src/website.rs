@@ -3,6 +3,7 @@ use std::{
     ffi::OsStr,
     fs, io,
     path::{Path, PathBuf},
+    process::{Command, ExitStatus},
 };
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
@@ -18,6 +19,7 @@ use crate::{
 };
 
 const BANNER_IMAGE_PNG: &[u8] = include_bytes!("../ocotelolco_banner.png");
+const BACKGROUND_IMAGE_PNG: &[u8] = include_bytes!("../ocotelolco_bg.png");
 const HFNSS_FONT_TTF: &[u8] = include_bytes!("../HFNSS.ttf");
 const FAVICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="crispEdges"><path fill="#6f4a05" fill-rule="evenodd" d="M8 6h18v4h2v14h-2v4H8v-2H6V8h2zm4 6v12h10V12z"/><path fill="#dba51e" fill-rule="evenodd" d="M6 4h18v4h2v14h-2v4H6v-2H4V6h2zm4 6v12h10V10z"/><path fill="#fff0a0" d="M8 6h14v2H8zM6 8h2v14H6z"/><path fill="#8a6208" d="M10 24h14v2H10zM24 10h2v12h-2z"/></svg>"##;
 const PERFORMANCE_START: Date = Date::new(2025, 10, 28);
@@ -55,6 +57,12 @@ pub fn default_output_path() -> PathBuf {
         .join("ocotelolco.html")
 }
 
+pub fn github_pages_output_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("docs")
+        .join("index.html")
+}
+
 pub fn write_site(output_path: impl AsRef<Path>) -> io::Result<()> {
     let output_path = output_path.as_ref();
     let view = load_site_view()?;
@@ -68,6 +76,118 @@ pub fn write_site(output_path: impl AsRef<Path>) -> io::Result<()> {
     }
 
     fs::write(output_path, html)
+}
+
+pub fn deploy_site() -> io::Result<()> {
+    let repository = Path::new(env!("CARGO_MANIFEST_DIR"));
+    require_main_branch(repository)?;
+
+    let output_path = github_pages_output_path();
+    write_site(&output_path)?;
+    let nojekyll_path = output_path
+        .parent()
+        .expect("GitHub Pages output path has a parent")
+        .join(".nojekyll");
+    if !nojekyll_path.exists() {
+        fs::write(&nojekyll_path, "")?;
+    }
+    println!("Generated {}", output_path.display());
+
+    require_git_success(
+        repository,
+        &["add", "--", "docs/index.html", "docs/.nojekyll"],
+    )?;
+
+    match git_status(
+        repository,
+        &[
+            "diff",
+            "--cached",
+            "--quiet",
+            "--",
+            "docs/index.html",
+            "docs/.nojekyll",
+        ],
+    )? {
+        GitStatus::Success => println!("Website output is unchanged; no commit needed."),
+        GitStatus::Difference => {
+            require_git_success(
+                repository,
+                &[
+                    "commit",
+                    "-m",
+                    "Deploy website",
+                    "--only",
+                    "--",
+                    "docs/index.html",
+                    "docs/.nojekyll",
+                ],
+            )?;
+        }
+        GitStatus::Failure(status) => {
+            return Err(command_error("git diff", status));
+        }
+    }
+
+    require_git_success(repository, &["push", "origin", "main"])?;
+    println!("Deployed website to GitHub Pages.");
+    Ok(())
+}
+
+fn require_main_branch(repository: &Path) -> io::Result<()> {
+    let output = Command::new("git")
+        .args(["branch", "--show-current"])
+        .current_dir(repository)
+        .output()?;
+    if !output.status.success() {
+        return Err(command_error("git branch --show-current", output.status));
+    }
+
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if branch != "main" {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("website deployment must run from main; current branch is {branch:?}"),
+        ));
+    }
+    Ok(())
+}
+
+enum GitStatus {
+    Success,
+    Difference,
+    Failure(ExitStatus),
+}
+
+fn git_status(repository: &Path, arguments: &[&str]) -> io::Result<GitStatus> {
+    let status = Command::new("git")
+        .args(arguments)
+        .current_dir(repository)
+        .status()?;
+    Ok(match status.code() {
+        Some(0) => GitStatus::Success,
+        Some(1) => GitStatus::Difference,
+        _ => GitStatus::Failure(status),
+    })
+}
+
+fn require_git_success(repository: &Path, arguments: &[&str]) -> io::Result<()> {
+    let status = Command::new("git")
+        .args(arguments)
+        .current_dir(repository)
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(command_error(
+            &format!("git {}", arguments.join(" ")),
+            status,
+        ))
+    }
+}
+
+fn command_error(command: &str, status: ExitStatus) -> io::Error {
+    io::Error::other(format!("{command} exited with {status}"))
 }
 
 fn load_site_view() -> io::Result<SiteView> {
@@ -475,6 +595,9 @@ fn site_css() -> String {
         css.push_str(&color.css());
         css.push_str(";\n");
     }
+    css.push_str("      --page-background-image: url(\"");
+    css.push_str(&background_image_data_uri());
+    css.push_str("\");\n");
     css.push_str(
         r##"      --chart-account: var(--yellow-6);
       --chart-index: var(--gray-6);
@@ -492,6 +615,13 @@ fn hfnss_font_data_uri() -> String {
     format!(
         "data:font/ttf;base64,{}",
         BASE64_STANDARD.encode(HFNSS_FONT_TTF)
+    )
+}
+
+fn background_image_data_uri() -> String {
+    format!(
+        "data:image/png;base64,{}",
+        BASE64_STANDARD.encode(BACKGROUND_IMAGE_PNG)
     )
 }
 
@@ -532,7 +662,7 @@ const SITE_CSS_RULES: &str = r##"
       position: fixed;
       inset: 0;
       z-index: -1;
-      background: url("../ocotelolco_bg.png") center / cover;
+      background: var(--page-background-image) center / cover;
       content: "";
       opacity: 0.34;
     }
@@ -2267,11 +2397,14 @@ mod tests {
     }
 
     #[test]
-    fn embeds_raw_chart_and_banner_data() {
+    fn embeds_raw_chart_and_image_data() {
         let site = render_site(&fixture_view());
 
         assert!(site.contains(r#""account_points":[{"date":"2025-10-28""#));
         assert!(site.contains(r#""sp500_points":[{"date":"2025-10-28""#));
+        assert!(site.contains(r#"--page-background-image: url("data:image/png;base64,iVBORw0KGgo"#));
+        assert!(site.contains("background: var(--page-background-image) center / cover;"));
+        assert!(!site.contains("ocotelolco_bg.png"));
         assert!(site.contains(
             r#"<img class="block h-banner mx-auto w-full max-w-window object-cover object-center""#
         ));
@@ -2284,6 +2417,13 @@ mod tests {
         assert_eq!(&BANNER_IMAGE_PNG[..8], b"\x89PNG\r\n\x1a\n");
         assert_eq!(&BANNER_IMAGE_PNG[12..16], b"IHDR");
         assert_eq!(BANNER_IMAGE_PNG[25], 6);
+    }
+
+    #[test]
+    fn background_png_is_embedded_image_data() {
+        assert_eq!(&BACKGROUND_IMAGE_PNG[..8], b"\x89PNG\r\n\x1a\n");
+        assert_eq!(&BACKGROUND_IMAGE_PNG[12..16], b"IHDR");
+        assert!(BACKGROUND_IMAGE_PNG.len() > 2_000_000);
     }
 
     #[test]
