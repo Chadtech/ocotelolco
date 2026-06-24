@@ -18,10 +18,13 @@ use crate::{
     },
 };
 
-const BANNER_IMAGE_PNG: &[u8] = include_bytes!("../ocotelolco_banner.png");
-const BACKGROUND_IMAGE_PNG: &[u8] = include_bytes!("../ocotelolco_bg.png");
+const BANNER_IMAGE_WEBP: &[u8] = include_bytes!("../ocotelolco_banner.webp");
+const BACKGROUND_IMAGE_WEBP: &[u8] = include_bytes!("../ocotelolco_bg.webp");
 const HFNSS_FONT_TTF: &[u8] = include_bytes!("../HFNSS.ttf");
 const FAVICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="crispEdges"><path fill="#6f4a05" fill-rule="evenodd" d="M8 6h18v4h2v14h-2v4H8v-2H6V8h2zm4 6v12h10V12z"/><path fill="#dba51e" fill-rule="evenodd" d="M6 4h18v4h2v14h-2v4H6v-2H4V6h2zm4 6v12h10V10z"/><path fill="#fff0a0" d="M8 6h14v2H8zM6 8h2v14H6z"/><path fill="#8a6208" d="M10 24h14v2H10zM24 10h2v12h-2z"/></svg>"##;
+const ASSET_DIRECTORY: &str = "assets";
+const BACKGROUND_ASSET: &str = "ocotelolco-bg.webp";
+const BANNER_ASSET: &str = "ocotelolco-banner.webp";
 const PERFORMANCE_START: Date = Date::new(2025, 10, 28);
 const PERFORMANCE_END: Date = Date::new(2026, 4, 28);
 const CONTENT_COPY: &str = "w-full max-w-none text-gray-5 text-base break-anywhere";
@@ -68,14 +71,24 @@ pub fn write_site(output_path: impl AsRef<Path>) -> io::Result<()> {
     let view = load_site_view()?;
     let html = render_site(&view);
 
-    if let Some(parent) = output_path
+    let output_directory = output_path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent)?;
-    }
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(output_directory)?;
 
-    fs::write(output_path, html)
+    fs::write(output_path, html)?;
+    write_site_assets(output_directory)
+}
+
+fn write_site_assets(output_directory: &Path) -> io::Result<()> {
+    let asset_directory = output_directory.join(ASSET_DIRECTORY);
+    fs::create_dir_all(&asset_directory)?;
+    fs::write(
+        asset_directory.join(BACKGROUND_ASSET),
+        BACKGROUND_IMAGE_WEBP,
+    )?;
+    fs::write(asset_directory.join(BANNER_ASSET), BANNER_IMAGE_WEBP)
 }
 
 pub fn deploy_site() -> io::Result<()> {
@@ -95,7 +108,14 @@ pub fn deploy_site() -> io::Result<()> {
 
     require_git_success(
         repository,
-        &["add", "--", "docs/index.html", "docs/.nojekyll"],
+        &[
+            "add",
+            "--",
+            "docs/index.html",
+            "docs/.nojekyll",
+            "docs/assets/ocotelolco-bg.webp",
+            "docs/assets/ocotelolco-banner.webp",
+        ],
     )?;
 
     match git_status(
@@ -107,6 +127,8 @@ pub fn deploy_site() -> io::Result<()> {
             "--",
             "docs/index.html",
             "docs/.nojekyll",
+            "docs/assets/ocotelolco-bg.webp",
+            "docs/assets/ocotelolco-banner.webp",
         ],
     )? {
         GitStatus::Success => println!("Website output is unchanged; no commit needed."),
@@ -121,6 +143,8 @@ pub fn deploy_site() -> io::Result<()> {
                     "--",
                     "docs/index.html",
                     "docs/.nojekyll",
+                    "docs/assets/ocotelolco-bg.webp",
+                    "docs/assets/ocotelolco-banner.webp",
                 ],
             )?;
         }
@@ -595,9 +619,6 @@ fn site_css() -> String {
         css.push_str(&color.css());
         css.push_str(";\n");
     }
-    css.push_str("      --page-background-image: url(\"");
-    css.push_str(&background_image_data_uri());
-    css.push_str("\");\n");
     css.push_str(
         r##"      --chart-account: var(--yellow-6);
       --chart-index: var(--gray-6);
@@ -615,13 +636,6 @@ fn hfnss_font_data_uri() -> String {
     format!(
         "data:font/ttf;base64,{}",
         BASE64_STANDARD.encode(HFNSS_FONT_TTF)
-    )
-}
-
-fn background_image_data_uri() -> String {
-    format!(
-        "data:image/png;base64,{}",
-        BASE64_STANDARD.encode(BACKGROUND_IMAGE_PNG)
     )
 }
 
@@ -655,16 +669,34 @@ const SITE_CSS_RULES: &str = r##"
       font-size: var(--pixel-font-size);
       font-kerning: none;
       font-synthesis: none;
+      isolation: isolate;
       line-height: 1;
+    }
+
+    .page-background {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0.32;
+      pointer-events: none;
+      user-select: none;
     }
 
     body::before {
       position: fixed;
       inset: 0;
-      z-index: -1;
-      background: var(--page-background-image) center / cover;
+      z-index: 1;
+      background: rgb(3 24 11 / 72%);
       content: "";
-      opacity: 0.34;
+      pointer-events: none;
+    }
+
+    body > main {
+      position: relative;
+      z-index: 2;
     }
 
     a {
@@ -718,7 +750,6 @@ const SITE_CSS_RULES: &str = r##"
     .min-h-row-header { min-height: 1.666667rem; }
     .mx-auto { margin-right: auto; margin-left: auto; }
     .mt-1 { margin-top: 0.166667rem; }
-    .mt-4 { margin-top: 0.666667rem; }
     .mb-2 { margin-bottom: 0.333333rem; }
     .mb-4 { margin-bottom: 0.666667rem; }
     .p-1 { padding: 0.166667rem; }
@@ -1160,6 +1191,7 @@ fn site_body(view: &SiteView) -> Node {
     body(
         Vec::new(),
         vec![
+            background_image(),
             main_element(
                 vec![class("min-h-screen grid gap-4 p-8 max-md:p-4")],
                 vec![site_banner(), desktop_window(view)],
@@ -1173,6 +1205,20 @@ fn site_body(view: &SiteView) -> Node {
             ),
             script(Vec::new(), vec![Node::raw_text(PERFORMANCE_CHART_SCRIPT)]),
         ],
+    )
+}
+
+fn background_image() -> Node {
+    img(
+        vec![
+            class("page-background"),
+            attr("src", format!("{ASSET_DIRECTORY}/{BACKGROUND_ASSET}")),
+            attr("alt", ""),
+            attr("aria-hidden", "true"),
+            attr("width", "1448"),
+            attr("height", "1086"),
+        ],
+        Vec::new(),
     )
 }
 
@@ -1197,19 +1243,12 @@ fn banner_image() -> Node {
     img(
         vec![
             class("block h-banner mx-auto w-full max-w-window object-cover object-center"),
-            attr("src", banner_image_data_uri()),
+            attr("src", format!("{ASSET_DIRECTORY}/{BANNER_ASSET}")),
             attr("alt", "Ocotelolco"),
             attr("width", "1672"),
             attr("height", "941"),
         ],
         Vec::new(),
-    )
-}
-
-fn banner_image_data_uri() -> String {
-    format!(
-        "data:image/png;base64,{}",
-        BASE64_STANDARD.encode(BANNER_IMAGE_PNG)
     )
 }
 
@@ -1311,17 +1350,22 @@ fn performance_panel(view: &SiteView) -> Node {
 
     section(
         vec![
-            class("relative min-w-0 bg-gray-2 py-4 text-gray-6 max-md:py-2"),
+            class("relative min-w-0 bg-gray-2 text-gray-6"),
             attr("aria-label", "Rate of return chart"),
         ],
         vec![
             chart_copy(view),
-            chart_viewport(),
-            return_table(
-                account_label,
-                &view.account_return,
-                sp500_label,
-                &view.sp500_return,
+            div(
+                vec![class("relative bg-green-2 edge-inset")],
+                vec![
+                    chart_viewport(),
+                    return_table(
+                        account_label,
+                        &view.account_return,
+                        sp500_label,
+                        &view.sp500_return,
+                    ),
+                ],
             ),
         ],
     )
@@ -1601,7 +1645,7 @@ fn render_list_item(item: &ListItem) -> Node {
 fn chart_viewport() -> Node {
     div(
         vec![class(
-            "relative min-w-0 min-h-chart overflow-x-auto bg-green-2 edge-inset p-3 max-md:min-h-chart max-md:p-2",
+            "relative min-w-0 min-h-chart overflow-x-auto bg-green-2 border-b-solid p-3 max-md:min-h-chart max-md:p-2",
         )],
         vec![svg(
             vec![
@@ -1640,7 +1684,7 @@ fn return_table(
 ) -> Node {
     div(
         vec![
-            class("relative mt-4 bg-green-2 edge-inset text-gray-6"),
+            class("relative bg-green-2 text-gray-6"),
             attr("aria-label", "Rate of return table"),
         ],
         vec![
@@ -1656,17 +1700,23 @@ fn return_table(
                     ),
                 ],
             ),
-            return_row("account", account_label, account_return),
-            return_row("index", sp500_label, sp500_return),
+            return_row("account", account_label, account_return, true),
+            return_row("index", sp500_label, sp500_return, false),
         ],
     )
 }
 
-fn return_row(legend_class: &str, name: &str, value: &str) -> Node {
+fn return_row(legend_class: &str, name: &str, value: &str, has_bottom_separator: bool) -> Node {
+    let separator_class = if has_bottom_separator {
+        " border-b-dotted"
+    } else {
+        ""
+    };
+
     div(
-        vec![class(
-            "grid min-h-row grid-cols-return items-center gap-4 border-b-dotted px-3 py-2 text-base max-md:grid-cols-1 max-md:gap-1",
-        )],
+        vec![class(format!(
+            "grid min-h-row grid-cols-return items-center gap-4 px-3 py-2 text-base max-md:grid-cols-1 max-md:gap-1{separator_class}"
+        ))],
         vec![
             span(
                 vec![class("flex items-center gap-2")],
@@ -2228,10 +2278,30 @@ mod tests {
         ));
         assert!(site.contains(r#"class="min-w-0 bg-green-2 p-3 text-base edge-inset""#));
         assert!(site.contains(r#"class="grid bg-green-2 edge-inset""#));
-        assert!(site.contains("overflow-x-auto bg-green-2 edge-inset p-3"));
-        assert!(site.contains(r#"class="relative mt-4 bg-green-2 edge-inset text-gray-6""#));
+        assert!(site.contains(r#"class="relative bg-green-2 edge-inset">"#));
+        assert!(site.contains("overflow-x-auto bg-green-2 border-b-solid p-3"));
+        assert!(site.contains(r#"class="relative bg-green-2 text-gray-6""#));
+        assert!(!site.contains(r#"class="relative bg-green-2 edge-inset text-gray-6""#));
         assert!(!site.contains(".bg-green-2,\n"));
         assert!(!site.contains("box-shadow"));
+    }
+
+    #[test]
+    fn performance_chart_and_table_share_one_inset_frame() {
+        let site = render_site(&fixture_view());
+
+        assert!(site.contains(
+            r#"<div class="relative bg-green-2 edge-inset"><div class="relative min-w-0 min-h-chart overflow-x-auto bg-green-2 border-b-solid p-3"#
+        ));
+        assert!(site.contains(
+            r#"<div class="relative bg-green-2 text-gray-6" aria-label="Rate of return table">"#
+        ));
+        assert!(site.contains(
+            r#"max-md:grid-cols-1 max-md:gap-1 border-b-dotted"><span class="flex items-center gap-2">"#
+        ));
+        assert!(site.contains(
+            r#"max-md:grid-cols-1 max-md:gap-1"><span class="flex items-center gap-2"><span class="square-3 flex-none bg-current text-chart-index""#
+        ));
     }
 
     #[test]
@@ -2368,15 +2438,16 @@ mod tests {
     }
 
     #[test]
-    fn performance_section_uses_report_content_width() {
+    fn performance_section_uses_report_content_width_without_vertical_padding() {
         let site = render_site(&fixture_view());
 
         assert!(site.contains(
-            r#"<section class="relative min-w-0 bg-gray-2 py-4 text-gray-6 max-md:py-2" aria-label="Rate of return chart">"#
+            r#"<section class="relative min-w-0 bg-gray-2 text-gray-6" aria-label="Rate of return chart">"#
         ));
         assert!(!site.contains(
-            r#"<section class="relative min-w-0 bg-gray-2 p-4 text-gray-6 max-md:p-2" aria-label="Rate of return chart">"#
+            r#"<section class="relative min-w-0 bg-gray-2 py-4 text-gray-6 max-md:py-2" aria-label="Rate of return chart">"#
         ));
+        assert!(!site.contains("max-md:pb-2"));
     }
 
     #[test]
@@ -2397,33 +2468,55 @@ mod tests {
     }
 
     #[test]
-    fn embeds_raw_chart_and_image_data() {
+    fn embeds_raw_chart_data_and_references_cacheable_images() {
         let site = render_site(&fixture_view());
 
         assert!(site.contains(r#""account_points":[{"date":"2025-10-28""#));
         assert!(site.contains(r#""sp500_points":[{"date":"2025-10-28""#));
-        assert!(site.contains(r#"--page-background-image: url("data:image/png;base64,iVBORw0KGgo"#));
-        assert!(site.contains("background: var(--page-background-image) center / cover;"));
+        assert!(site.contains(r#"<img class="page-background" src="assets/ocotelolco-bg.webp""#));
+        assert!(site.contains(r#"alt="" aria-hidden="true" width="1448" height="1086">"#));
+        assert!(site.contains(".page-background {"));
+        assert!(site.contains("background: rgb(3 24 11 / 72%);"));
+        assert!(site.contains("body > main {"));
+        assert!(!site.contains("--page-background-image"));
         assert!(!site.contains("ocotelolco_bg.png"));
         assert!(site.contains(
             r#"<img class="block h-banner mx-auto w-full max-w-window object-cover object-center""#
         ));
-        assert!(site.contains(r#"src="data:image/png;base64,iVBORw0KGgo"#));
-        assert!(!site.contains(r#"src="../ocotelolco_banner.png""#));
+        assert!(site.contains(r#"src="assets/ocotelolco-banner.webp""#));
+        assert!(!site.contains("data:image/png;base64,"));
     }
 
     #[test]
-    fn banner_png_has_alpha_channel() {
-        assert_eq!(&BANNER_IMAGE_PNG[..8], b"\x89PNG\r\n\x1a\n");
-        assert_eq!(&BANNER_IMAGE_PNG[12..16], b"IHDR");
-        assert_eq!(BANNER_IMAGE_PNG[25], 6);
+    fn optimized_images_are_webp_assets() {
+        assert_eq!(&BANNER_IMAGE_WEBP[..4], b"RIFF");
+        assert_eq!(&BANNER_IMAGE_WEBP[8..12], b"WEBP");
+        assert!(BANNER_IMAGE_WEBP.len() < 200_000);
+        assert_eq!(&BACKGROUND_IMAGE_WEBP[..4], b"RIFF");
+        assert_eq!(&BACKGROUND_IMAGE_WEBP[8..12], b"WEBP");
+        assert!(BACKGROUND_IMAGE_WEBP.len() < 350_000);
     }
 
     #[test]
-    fn background_png_is_embedded_image_data() {
-        assert_eq!(&BACKGROUND_IMAGE_PNG[..8], b"\x89PNG\r\n\x1a\n");
-        assert_eq!(&BACKGROUND_IMAGE_PNG[12..16], b"IHDR");
-        assert!(BACKGROUND_IMAGE_PNG.len() > 2_000_000);
+    fn writes_cacheable_image_assets_next_to_site_output() {
+        let directory = std::env::temp_dir().join(format!(
+            "ocotelolco-website-assets-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&directory);
+
+        write_site_assets(&directory).unwrap();
+
+        assert_eq!(
+            fs::read(directory.join(ASSET_DIRECTORY).join(BANNER_ASSET)).unwrap(),
+            BANNER_IMAGE_WEBP
+        );
+        assert_eq!(
+            fs::read(directory.join(ASSET_DIRECTORY).join(BACKGROUND_ASSET)).unwrap(),
+            BACKGROUND_IMAGE_WEBP
+        );
+
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

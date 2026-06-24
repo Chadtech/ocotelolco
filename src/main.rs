@@ -28,7 +28,7 @@ enum Command {
         #[arg(long)]
         returns_only: bool,
     },
-    /// Generate a static trading success website HTML file.
+    /// Generate a static trading success website HTML file and image assets.
     MakeWebsite {
         /// Path to write the generated HTML file. Defaults to outputs/ocotelolco.html.
         #[arg(short, long, value_name = "PATH")]

@@ -2,7 +2,7 @@
 
 ## Website
 
-Generate the website locally:
+Generate the website locally, including its adjacent `assets/` directory:
 
 ```sh
 cargo run -- make-website
