@@ -364,12 +364,12 @@ fn wars_section() -> DetailSection {
             paragraph("Leading up to Venezuela, I bought oil companies, oil-related exposure, and VIXY, an ETF linked to short-term VIX futures. I did not make defense companies a major part of the strategy. My thinking was that defense company valuations were more likely to reflect longer-term procurement cycles than short-term news about a specific conflict."),
             paragraph("After Venezuela, I moved to anticipating war with Iran. I was worried about picking the wrong vehicle, so I diversified across several things I expected to benefit from a war: oil, oil companies, tanker/shipping exposure, and fertilizer companies. I had used volatility products for the Venezuela trade, but I mostly stopped using them during the Iran war."),
             paragraph("The results were uneven. Oil and energy did well overall. Shipping was directionally right in the market, but my own result there was modest. Fertilizer was a small loss. I think now that war made fertilizer more valuable, but it also made fertilizer more expensive to produce, so the net effect on fertilizer stocks was negative."),
-            paragraph("My approach to trading around wars was to buy well in advance of the event and sell when the war actually broke out. That was mostly right. The market often prices fear before the event and then can rise once the event happens, especially if the outcome is less bad than expected."),
+            paragraph("My approach to trading around wars was to buy well in advance of the event and sell when the war actually broke out. That was mostly right."),
             subsection(
                 "VIXY",
                 vec![
                     paragraph("I traded VIXY frequently. My understanding was that VIXY is usually a terrible buy-and-hold product because it tends to decay over time. It is designed for short-term volatility exposure, not long-term ownership."),
-                    paragraph("My actual VIXY trading was not good. I lost money on VIXY and VIXM. I tried to jump in when prediction-market odds of war rose and then exit a few days later. Ironically, I would have been better off buying and holding VIXY through the period, which is usually not a good idea."),
+                    paragraph("My actual VIXY trading was not good. I lost money on VIXY and VIXM. I tried to jump in when prediction-market odds of war rose and then exit a few days later, thinking I would be ahead of the market on important information. This didn't work. Ironically, I would have been better off buying and holding VIXY through the period, which was exactly what I read you shouldn't be doing."),
                 ],
             ),
             subsection(
@@ -404,7 +404,7 @@ fn tariff_section() -> DetailSection {
                 "Originalism Was Messier Than I Expected",
                 vec![
                     paragraph("My legal thesis was also messier than I expected. I thought originalist justices would mostly line up against tariffs. That did not really happen."),
-                    paragraph("Justice Gorsuch made the kind of originalist argument I expected against tariffs. Justice Thomas, also highly originalist, argued in favor of the delegation. Justice Barrett ruled against tariffs for textualist reasons, but did not address the constitutional question in the same way Gorsuch did. Justice Jackson also ruled against tariffs for reasons closer to Barrett's."),
+                    paragraph("Justice Gorsuch made the kind of originalist argument I expected against tariffs. Justice Thomas, also highly originalist, argued in favor of the delegation. Justice Barrett ruled against tariffs for textualist reasons, but did not address the constitutional question in the same way Gorsuch did. Justice Jackson (whom I controversially consider something like a left-wing originalist) also ruled against tariffs for reasons closer to Barrett's."),
                     paragraph("The result was not \"originalists all agree.\" It was more complicated. I still think legal ideology matters, but I have evolved toward thinking that judicial opinions are not personal essays. They are instruments built to resolve cases, manage coalitions, avoid unnecessary constitutional questions, and shape doctrine. That helps explain why the justices could reach similar outcomes through different legal reasoning, or disagree even when they share an interpretive label."),
                 ],
             ),
@@ -420,7 +420,7 @@ fn credibility_section() -> DetailSection {
         vec![
             paragraph("The US credibility thesis was that Trump-era instability would make the world less confident in the US-led system. If people were less sure the US was predictable, they would look for alternatives to dollar-linked assets. The obvious candidates were commodities, especially gold and silver."),
             paragraph("I resisted this at first. When I think of gold and silver, I think of old people getting scammed by ads on Fox News into buying or selling gold. If I bought gold and lost money, I would feel embarrassed. But the more I looked into it, the more reasonable the trade seemed. Someone smart I trust who worked in finance also spoke highly of trading gold, which made me take the idea more seriously. The world relies heavily on the dollar, and the dollar relies on confidence in US institutions. If that confidence weakens, it makes sense for some investors and central banks to diversify into gold."),
-            paragraph("This became my strongest thesis by tag. The \"US credibility\" basket finished +4.0%. The gold and silver pieces were a major part of that, especially IAU and SLV. SILJ also helped, while GDX was basically flat."),
+            paragraph("This became my strongest thesis by tag. The \"US credibility\" basket finished +4.0%."),
             paragraph("Gold and silver did very well for me, but the trade also became volatile. In February, shortly after my second daughter was born, I checked the market at 9:30 AM after being awake most of the night and saw my gold exposure drop sharply at the open. I remember seeing something like a 16% drop and immediately sold everything. No stress, no denial, just the simple realization that I was completely unprepared to deal with that kind of move and still had the opportunity to come out ahead."),
             subsection(
                 "The Irony Of Gold",
@@ -441,7 +441,7 @@ fn tech_section() -> DetailSection {
         vec![
             paragraph("I believe in AI. It is already useful to me as a programmer, and I think we are early in a long period where people and companies will keep discovering great new ways to use it."),
             paragraph("But believing in AI is not the same thing as believing every AI stock is a good buy. The dot-com bubble happened even though the internet really was transformative. A technology can be real, important, and world-changing while many of the companies attached to it still become overvalued and crash."),
-            paragraph("My working assumption was that software demand is inelastic. There is a lot of software people and businesses want but cannot currently afford to build. If AI makes software cheaper to produce, there should be more software, not less. That made me more interested in software companies, small companies, cloud infrastructure, and raw materials for compute than in simply buying the most obvious AI winners."),
+            paragraph("My working assumption was that software demand is inelastic. There is a lot of software that people and businesses want but cannot currently afford to build. If AI makes software cheaper to produce, there should be more software, not less. That made me more interested in software companies, small companies, cloud infrastructure, and raw materials for compute than in simply buying the most obvious AI winners."),
             paragraph("During this period, I became more skeptical that the current frontier model companies are necessarily the best stock-market expression of AI. Companies like OpenAI and Anthropic sell access to the best models, but open source models keep trailing them by only a few months for many use cases. For high-volume tasks that do not require frontier intelligence, cheaper open models may be good enough."),
             paragraph("I also became more cautious about Nvidia and other current AI hardware winners. Their valuation depends heavily on GPUs staying essential to AI, and that may not turn out to be true. Future models may be less dependent on GPU architecture. Nvidia's CUDA ecosystem is a real advantage, though maybe a fragile one, but competitors may improve their software ecosystems, and at some price the economics of non-CUDA systems may matter more than compatibility."),
             paragraph("The analogy I kept coming back to was electricity. Since electricity was invented, which grew more: electricity companies, or everyone who learned how to use electricity? I am pretty sure the second. If AI is like that, then the biggest winners may not be the model companies themselves, but the companies that use AI to become more productive."),
@@ -465,9 +465,8 @@ fn experts_section() -> DetailSection {
         vec![
             paragraph("I listened to a lot of oil experts because oil was one of my main ways to trade the war thesis. They were useful on details: what happens to an oil well if pumping stops, how hard it is to restart production, what routes can substitute for Hormuz, and how oil logistics actually work."),
             paragraph("But they were less useful on the whole trade. Oil expertise does not automatically tell you the probability that Iran will strike Gulf energy infrastructure, how markets will price that risk, or how quickly politicians will change their posture. Several experts seemed confident. But what they knew were narrow facts about their domain, not the full chain of uncertainty."),
-            paragraph("I saw a similar pattern with tankers. I spoke with a tanker expert who seemed deeply immersed in tanker forums and industry news. He had a stock strategy built around tankers and a lot of conviction. But he also treated some major geopolitical contingencies as afterthoughts, even when he himself acknowledged those contingencies were central to the trade."),
-            paragraph("The market example here is BWET. I did not buy BWET, but it showed how much tanker stocks could move. The Breakwave Tanker Shipping ETF reportedly rose about 1,300% over the prior year and kept rising up to the Iran war."),
-            paragraph("The point is not that the tanker expert was obviously wrong about the industry. It is that industry-specific knowledge was not enough to make money if the timing was bad."),
+            paragraph("I saw a similar pattern with tankers. I spoke with a tanker expert who seemed deeply immersed in tanker forums and industry news, but he treated major geopolitical contingencies as afterthoughts even while acknowledging that they were central to the trade. He only became interested in tanker stocks after the war had started and their prices had already exploded. BWET, a tanker shipping ETF, had reportedly risen about 1,300% over the prior year and continued rising into the war. By the time the expert developed conviction about the trade, he was late."),
+            paragraph("The point is not that the tanker expert was wrong about the industry. His analysis may have been sound, but his focus on tanker-specific information made him less responsive to important information outside the industry. Industry expertise was not enough to make money when it identified the opportunity only after geopolitical events had caused the market to reprice it."),
             paragraph("The missing skill is probabilistic translation. Forecasting and prediction-market communities train you to convert information, uncertainty, and your own confidence into quantitative probabilities. An expert can know a ton about a domain and still have a subjective feeling that is poorly calibrated. The trade is almost never about one variable. It is about the joint distribution of politics, logistics, timing, market expectations, and other investors' positioning."),
         ],
     )
@@ -486,7 +485,7 @@ fn stopping_section() -> DetailSection {
             paragraph("The experience felt completely different before and after the Iran war. Before the war, I felt like I had deeply thought-through plans and was months ahead of the news. I was mostly alone, thinking about issues almost no one was talking about. After the war started, everyone was talking about those issues, and I was mostly scrambling and chasing headlines."),
             paragraph("I put money into regional ETFs like Vietnam, Israel, Mexico, and Latin America, thinking that entire regions were diversified enough to function like broad index exposure. That was wrong. Regional ETFs are not just mini-S&P 500s. They are risk assets that investors often abandon faster during global drawdowns. My regions tag finished negative, at -2.3%."),
             paragraph("I also bet against the market after deciding the Iran war was going badly, and would get worse. That worked for a few weeks, but then the market recovered quickly after Trump announced that the war was effectively over. Those trades ended up mixed to negative."),
-            paragraph("The point is not \"never keep trading.\" The campaign should have had a rule for what to do when the original edge disappeared. If I have no active thesis, the default should be the index. Continuing to trade because the experiment is not over is not the same as having an edge."),
+            paragraph("The campaign should have had a rule for what to do when the original edge disappeared. If I have no active thesis, the default should be the index."),
         ],
     )
 }
@@ -498,20 +497,12 @@ fn lessons_section() -> DetailSection {
         "The distilled takeaways from the campaign.",
         vec![
             subsection(
-                "Prediction Is Not Trade Construction",
-                vec![paragraph("I was right about several events and still made mistakes expressing those views. There is a difference between predicting the world and choosing the right instrument, entry date, exit date, and position size.")],
+                "Trade the Event Directly",
+                vec![paragraph("For my tariffs thesis, I tried to express my prediction by buying stocks. But I knew there was a betting market on whether SCOTUS would rule against the tariffs. I should have just bet there. My returns would have been much larger, and it would have been much simpler to bet on the question directly than to try to come up with a bunch of assets I expected to go up. Moving forward, I need to keep in mind that if I have a highly divergent view on a straightforward question that can be bet on, I should just bet on it.")],
             ),
             subsection(
-                "Subjective Trading Results Feel Unreliable",
-                vec![paragraph("My tariff trades felt disappointing in real time but were profitable when I reviewed the transactions. Watching red and green numbers after individual clicks is not the same thing as analyzing the whole strategy.")],
-            ),
-            subsection(
-                "The Cleanest Instrument Usually Deserves A Look",
-                vec![paragraph("For tariffs, I tried to express an event prediction through stocks even though there was a prediction market on the exact event and I had a strong probability estimate of my own. At 50% odds, a winning event-market bet would have doubled before fees. I should have bet there directly. Related prediction markets existed for the war trades too, but I did not have the same strong independent probability view there.")],
-            ),
-            subsection(
-                "Experts Need To Be Mapped To The Right Question",
-                vec![paragraph("Oil experts were helpful about oil mechanics. Tanker experts were helpful about tanker mechanics. But the trade required probabilities about war, infrastructure attacks, policy reaction, market positioning, and timing. Narrow expertise helped, but it was not enough.")],
+                "Timing vs Waiting",
+                vec![paragraph("In February 2026, there were many dates that were likely to precede either the SCOTUS ruling on tariffs or a U.S. attack on Iran. I wanted to be fully invested in each thesis immediately before those dates, thinking I could maximize my returns if I was fully behind both at the right moments. In hindsight, getting the exact dates right did not matter, because the things I was investing in gradually went up throughout the period. I could have simply split my money 50/50 between the two theses and relaxed.")],
             ),
         ],
     )
