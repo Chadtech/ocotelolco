@@ -231,7 +231,7 @@ pub fn campaign_1_content() -> CampaignContent {
             key_metrics: vec![
                 KeyMetric {
                     label: text("Final return vs S&P 500"),
-                    value: MetricValue::Percentage(PercentageFigure::percentage_points(788)),
+                    value: MetricValue::Percentage(PercentageFigure::percentage_points(716)),
                     note: None,
                 },
                 KeyMetric {
@@ -481,7 +481,7 @@ fn stopping_section() -> DetailSection {
             paragraph("After the Iran war started, my main theses had resolved. I was out of good ideas."),
             paragraph("The correct thing to do was probably to stop trading and move into an index fund. But this was only four months into a six-month campaign, and one of my goals was to trade a lot. I felt real internal conflict about that. Stopping early felt like abandoning the experiment, but continuing without a clear edge also felt wrong. I kept looking for trades partly because I wanted the campaign to remain active and partly because I thought even bad trades might teach me something if I was trying my best."),
             paragraph("That was expensive."),
-            paragraph("At the outbreak of the Iran war, I was roughly 22 percentage points ahead of the S&P 500. I finished 7.88 points ahead. Almost all of the lost edge came after my original theses were exhausted."),
+            paragraph("At the outbreak of the Iran war, I was roughly 22 percentage points ahead of the S&P 500. I finished 7.16 points ahead. Almost all of the lost edge came after my original theses were exhausted."),
             paragraph("The experience felt completely different before and after the Iran war. Before the war, I felt like I had deeply thought-through plans and was months ahead of the news. I was mostly alone, thinking about issues almost no one was talking about. After the war started, everyone was talking about those issues, and I was mostly scrambling and chasing headlines."),
             paragraph("I put money into regional ETFs like Vietnam, Israel, Mexico, and Latin America, thinking that entire regions were diversified enough to function like broad index exposure. That was wrong. Regional ETFs are not just mini-S&P 500s. They are risk assets that investors often abandon faster during global drawdowns. My regions tag finished negative, at -2.3%."),
             paragraph("I also bet against the market after deciding the Iran war was going badly, and would get worse. That worked for a few weeks, but then the market recovered quickly after Trump announced that the war was effectively over. Those trades ended up mixed to negative."),
@@ -572,7 +572,7 @@ mod tests {
         );
         assert_eq!(
             content.overview.key_metrics[0].value,
-            MetricValue::Percentage(PercentageFigure::percentage_points(788))
+            MetricValue::Percentage(PercentageFigure::percentage_points(716))
         );
         assert_eq!(content.overview.key_metrics[1].label, "High vs S&P 500");
         assert_eq!(

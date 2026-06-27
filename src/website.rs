@@ -501,6 +501,27 @@ fn trim_return_points(points: Vec<ReturnPoint>, start: Date, end: Date) -> Vec<R
         .collect()
 }
 
+fn relative_return_spreads(
+    account_points: &[ReturnPoint],
+    sp500_points: &[ReturnPoint],
+) -> Vec<RelativeReturnPoint> {
+    let sp500_returns = sp500_points
+        .iter()
+        .map(|point| (point.date, point.return_pct))
+        .collect::<BTreeMap<_, _>>();
+
+    account_points
+        .iter()
+        .filter_map(|account_point| {
+            sp500_returns
+                .get(&account_point.date)
+                .map(|sp500_return| RelativeReturnPoint {
+                    spread_pct: account_point.return_pct - sp500_return,
+                })
+        })
+        .collect()
+}
+
 fn missing_data(label: &str, start: Date, end: Date) -> io::Error {
     io::Error::new(
         io::ErrorKind::InvalidData,
@@ -592,6 +613,14 @@ fn parse_money(value: &str) -> Result<f64, String> {
 
 fn percent(value: f64) -> String {
     format!("{value:.2}%")
+}
+
+fn percentage_figure(value: f64) -> PercentageFigure {
+    PercentageFigure::percent((value * 100.0).round() as i32)
+}
+
+fn percentage_points_figure(value: f64) -> PercentageFigure {
+    PercentageFigure::percentage_points((value * 100.0).round() as i32)
 }
 
 fn site_css() -> String {
@@ -1143,8 +1172,11 @@ struct SiteView {
 impl SiteView {
     fn from_chart(chart: &PerformanceChart) -> io::Result<Self> {
         let chart_data = EmbeddedChartData::from(chart);
+        let mut content = website_content::campaign_1_content();
+        apply_performance_metrics(&mut content, chart);
+
         Ok(Self {
-            content: website_content::campaign_1_content(),
+            content,
             chart_json: serde_json::to_string(&chart_data).map_err(io::Error::other)?,
             actual_window: format!(
                 "{} to {}",
@@ -1154,6 +1186,38 @@ impl SiteView {
             account_return: percent(chart.account_return_pct),
             sp500_return: percent(chart.sp500_return_pct),
         })
+    }
+}
+
+fn apply_performance_metrics(content: &mut CampaignContent, chart: &PerformanceChart) {
+    if let Some(comparison) = content.performance.comparisons.get_mut(0) {
+        comparison.value = percentage_figure(chart.account_return_pct);
+    }
+    if let Some(comparison) = content.performance.comparisons.get_mut(1) {
+        comparison.value = percentage_figure(chart.sp500_return_pct);
+    }
+
+    let spreads = relative_return_spreads(&chart.account_points, &chart.sp500_points);
+    let final_spread = chart.account_return_pct - chart.sp500_return_pct;
+    let high_spread = spreads
+        .iter()
+        .map(|point| point.spread_pct)
+        .reduce(f64::max)
+        .unwrap_or(final_spread);
+    let low_spread = spreads
+        .iter()
+        .map(|point| point.spread_pct)
+        .reduce(f64::min)
+        .unwrap_or(final_spread);
+
+    if let Some(metric) = content.overview.key_metrics.get_mut(0) {
+        metric.value = MetricValue::Percentage(percentage_points_figure(final_spread));
+    }
+    if let Some(metric) = content.overview.key_metrics.get_mut(1) {
+        metric.value = MetricValue::Percentage(percentage_points_figure(high_spread));
+    }
+    if let Some(metric) = content.overview.key_metrics.get_mut(2) {
+        metric.value = MetricValue::Percentage(percentage_points_figure(low_spread));
     }
 }
 
@@ -1957,6 +2021,11 @@ struct ReturnPoint {
     return_pct: f64,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct RelativeReturnPoint {
+    spread_pct: f64,
+}
+
 #[derive(Serialize)]
 struct EmbeddedChartData {
     actual_start: String,
@@ -2557,6 +2626,32 @@ mod tests {
         assert_eq!(chart.actual_end, Date::new(2025, 10, 29));
         assert!((chart.account_return_pct - 10.0).abs() < f64::EPSILON * 100.0);
         assert!((chart.sp500_return_pct - 10.0).abs() < f64::EPSILON * 100.0);
+    }
+
+    #[test]
+    fn derives_overview_metrics_from_chart_returns() {
+        let view = fixture_view();
+
+        assert_eq!(
+            view.content.overview.key_metrics[0].value,
+            MetricValue::Percentage(PercentageFigure::percentage_points(500))
+        );
+        assert_eq!(
+            view.content.overview.key_metrics[1].value,
+            MetricValue::Percentage(PercentageFigure::percentage_points(500))
+        );
+        assert_eq!(
+            view.content.overview.key_metrics[2].value,
+            MetricValue::Percentage(PercentageFigure::percentage_points(0))
+        );
+        assert_eq!(
+            view.content.performance.comparisons[0].value,
+            PercentageFigure::percent(1000)
+        );
+        assert_eq!(
+            view.content.performance.comparisons[1].value,
+            PercentageFigure::percent(500)
+        );
     }
 
     #[test]
